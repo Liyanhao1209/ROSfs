@@ -4,13 +4,8 @@ import rospy
 import time,threading,sys
 
 tps =  [
-        "/camera/depth/camera_info",
-        "/camera/depth/image",
-        "/camera/rgb/camera_info",
-        "/camera/rgb/image_color",
-        "/cortex_marker_array",
-        "/tf"
-    ]
+        "/camera/infra1/image_rect_raw/compressed"
+]
 
 format = ['ROSfs']
 
@@ -35,12 +30,12 @@ class ROSfs_Bag:
 rtype = [ROSfs_Bag]
 num_threads = [1,2,4,8,16]
 def task(rt,backend,format,topics,time_len):
-    reader = rt(backend,format)
+    reader = rt(backend)
     reader.read_latest_msg(topics,time_len)
     
 if __name__=="__main__":
     print('Usage: python3 MultiThread.py /path/to/your/rosfs-container')
-    backend = sys.argv[1:]
+    backend = sys.argv[1]
     tl = 1
     threads = None
     for nt in num_threads:

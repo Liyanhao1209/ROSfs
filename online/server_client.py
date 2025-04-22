@@ -20,7 +20,7 @@ class AOI_Monitor:
     def dump_aoi_sequence(self,target:str):
         if len(self.time_sequence)==0:
             return
-
+        print(f"dump aoi into {target}")
         with open(target,'w',encoding='utf-8') as tf:
             data = {
                 "delta": self.delta,
@@ -36,7 +36,8 @@ class BAGReader(abc.ABC):
         self.bag_format = bag_format
         self.st = time.time()
 
-        self._aoi_monitor = AOI_Monitor(self.bag_format,653.499411 if bag_format not in ['rosfs,ROSfs'] else 0.0)
+        print(bag_format)
+        self._aoi_monitor = AOI_Monitor(self.bag_format,653.499411 if bag_format not in ['rosfs','ROSfs'] else 0.0)
         
     def get_relative_timestamp(self)->float:
         return time.time()-self.st
@@ -219,6 +220,7 @@ class ContainerServer:
     def kill(self,tokens:List[str]):
         self.socket.close()
         if self.reader is not None:
+            print('Container Server killed')
             self.reader.dump_aoi_data(os.path.join(aoit,f"{self.host}_{time.time()}.aoi"))
         
     def invalid_cmd(self,tokens:List[str]):
@@ -273,11 +275,18 @@ if __name__=='__main__':
     def start_req(c:ContainerClient):
         for _ in c.start_req(reqf):
             pass
+        return "Client"
     def listen(s:ContainerServer):
         s.listening()
+        return "Server"
     with concurrent.futures.ThreadPoolExecutor() as executor:
         server_res = executor.submit(listen,server)
         client_res = executor.submit(start_req,client)
         
-        for _ in concurrent.futures.as_completed([server_res,client_res]):
-            pass
+        for future in concurrent.futures.as_completed([server_res,client_res]):
+            exception = future.exception()
+            if exception:
+                print("An error occurred:", exception)
+            else:
+                task = future.result()
+                print(f"{task} Done")

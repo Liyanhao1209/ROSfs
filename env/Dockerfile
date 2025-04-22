@@ -1,5 +1,3 @@
-# docker inspect ubuntu:20.04 --format '{{.RepoDigests}}'
-# [ubuntu@sha256:fa17826afb526a9fc7250e0fbcbfd18d03fe7a54849472f86879d8bf562c629e]
 FROM ubuntu:20.04
 
 RUN apt-get update && apt-get install -y \
@@ -39,8 +37,8 @@ RUN rosdep install --from-paths ./src --ignore-packages-from-source --rosdistro 
 RUN catkin build --cmake-args -DCMAKE_BUILD_TYPE=Release -DPYTHON_EXECUTABLE=/usr/bin/python3
 
 WORKDIR /root
-RUN git clone -b storage_bplustree_1.1 https://gitee.com/YanHaoLi/rosfs.git rosbag_storage
-RUN git clone -b rosbag_1.1 https://gitee.com/YanHaoLi/rosfs.git rosbag
+RUN git clone -b rosbag_storage https://github.com/Liyanhao1209/ROSfs.git rosbag_storage
+RUN git clone -b rosbag https://github.com/Liyanhao1209/ROSfs.git rosbag
 
 RUN rm -r /root/ros_catkin_ws/src/ros_comm/rosbag && \
     rm -r /root/ros_catkin_ws/src/ros_comm/rosbag_storage && \
@@ -51,10 +49,5 @@ WORKDIR /root/ros_catkin_ws/src/ros_comm/rosbag
 RUN catkin build --this
     
 RUN echo "source /root/ros_catkin_ws/devel/setup.bash" >> ~/.bashrc
-
-RUN apt-get update && apt-get install -y \
-    python3.8-venv \
-    lsof \
-    trickle
 
 WORKDIR /root/ros_catkin_ws

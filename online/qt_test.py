@@ -1,31 +1,15 @@
 import rosbag
 import time,sys,random
 
-tps = {
-        'lcamera':"/davis/left/camera_info",
-        'levent':"/davis/left/events",
-        'limage':"/davis/left/image_raw",
-        'limu':"/davis/left/imu",
-        'revent':"/davis/right/events",
-        'rimu':"/davis/right/imu",
-        'point_cloud':"/velodyne_point_cloud",
-        'cust_imu':"/visensor/cust_imu",
-        'imu':"/visensor/imu",
-        'lcamera2':"/visensor/left/camera_info",
-        'limage2':"/visensor/left/image_raw",
-        'rcamera2':"/visensor/right/camera_info",
-        'rimage2':"/visensor/right/image_raw"
-    }
-
 groups = [
-    tps["limage"],
-    tps["limage2"],
-    tps["imu"],
-    [    tps["limage"],
-    tps["limage2"]],
-    [    tps["limage"],
-    tps["limage2"],
-    tps["imu"]]
+    "/camera/infra1/image_rect_raw",
+    "/camera/infra2/image_rect_raw/compressed",
+    "/mavros/imu/data",
+    ["/camera/infra1/image_rect_raw",
+    "/camera/infra2/image_rect_raw/compressed"],
+    ["/camera/infra1/image_rect_raw",
+    "/camera/infra2/image_rect_raw/compressed",
+    "/mavros/imu/data"]
 ]
 
 if __name__ == "__main__":

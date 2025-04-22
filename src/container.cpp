@@ -69,7 +69,6 @@ std::unique_ptr<Container> Container::create(std::string const& filename) {
     
     // init header brick for the container
     ChunkedFile* header = new ChunkedFile();
-    // ROS_INFO("header path: %s", brickname.c_str());
     auto time_index = KeyValueStore<ROSTimeStamp,TIData>::create(root_fd, "time_index", 0x1000);
     if (time_index.get_fd() == -1) {
         ROS_ERROR("create time index failed");
@@ -82,7 +81,6 @@ std::unique_ptr<Container> Container::create(std::string const& filename) {
 std::unique_ptr<Container> Container::open(std::string const& filename) {
     ROS_INFO("Opening Container");
 
-    // ROS_INFO("Opening Container: Open Container dir");
     int root_fd = ::open(filename.c_str(), O_PATH | O_DIRECTORY);
     if (root_fd == -1) {
         ROS_ERROR("Failed to open container directory: %s (%s)", 
@@ -90,7 +88,6 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
         return nullptr;
     }
 
-    // ROS_INFO("Opening Container: restoring Container time index");
     auto time_index = KeyValueStore<ROSTimeStamp,TIData>::open(root_fd,"time_index",0x1000);
     if (time_index.get_fd() == -1) {
         ROS_ERROR("Failed to open time index");
@@ -98,7 +95,6 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
         return nullptr;
     }
 
-    // ROS_INFO("Opening Container: restoring Container metadata brick");
     ChunkedFile* header_brick = new ChunkedFile();
     std::string header_path = filename + "/2147483647.brick";
     header_brick->openReadWrite(header_path);
@@ -107,26 +103,21 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
         filename,root_fd,std::move(time_index),header_brick
     ));
 
-    // ROS_INFO("Opening Container: restoring Container metadata file header offset && index data offset");
     // restore file_header_pos_ && index_data_pos_
     std::string version_str = std::string("#ROSBAG V") + VERSION + std::string("\n");
     container->file_header_pos_ = version_str.size(); // in this version,13B
     container->index_data_pos_ = container->file_header_pos_+FILE_HEADER_LENGTH+4+4; // since there's padding space in the file header segment
     // ,the index_data_pos_ = file_header_pos_ + FILE_HEADER_LENGTH +4 (header_len) + 4(data_len)
     
-    // ROS_INFO("Opening Container: restoring connection count info");
     // find out the connection_count_
     M_string file_header;
     container->seek(header_brick,container->file_header_pos_);
     container->readHeader(header_brick,file_header);
     container->connection_count_ = container->fromHeaderString<uint32_t>(file_header[CONNECTION_COUNT_FIELD_NAME]);
-    // std::cerr<<"connection_count_:"<<container->connection_count_<<std::endl;
     // restore connections_ map
-    // ROS_INFO("Opening Container: restoring connections map info");
     container->seek(header_brick,container->index_data_pos_);
     container->readConnectionRecords(header_brick,container->connection_count_);
 
-    // ROS_INFO("Opening Container: restoring Container metadata chunk info");
     // restore chunk_info_
     M_string chunk_info_header;
     container->readHeader(header_brick,chunk_info_header);
@@ -134,15 +125,11 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
     container->chunk_info_.start_time = container->fromHeaderString(chunk_info_header[START_TIME_FIELD_NAME]);
     container->chunk_info_.end_time = container->fromHeaderString(chunk_info_header[END_TIME_FIELD_NAME]);
 
-    // ROS_INFO("Opening Container: restoring Container connection message count info");
     // restore chunk_info_.connection_counts
     auto chunk_connection_count = container->fromHeaderString<uint32_t>(chunk_info_header[COUNT_FIELD_NAME]);
-    // std::cerr<<"chunk_connection_count:"<<chunk_connection_count<<std::endl;
     // redundant unpack but necessary
     // to skip data_len
-    // ROS_INFO("Opening Container: skip connection message info data length");
     header_brick->seek(4,std::ios_base::cur);
-    // std::cerr<<"loop"<<std::endl;
     for(uint32_t i=0;i<chunk_connection_count;i++){
         uint32_t connection_id,count;
 
@@ -152,14 +139,12 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
         container->chunk_info_.connection_counts.insert({connection_id,count});
     }
 
-    // ROS_INFO("Opening Container: restoring brick files handler");
     // restore brick files
     container->brick_files_.insert({INT_MAX, header_brick});
     DIR* dir = opendir(filename.c_str());
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
         std::string name = entry->d_name;
-        // std::cerr<<"name="<<name<<std::endl;
         if (name=="time_index"){
             continue;
         }
@@ -169,7 +154,6 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
         }
 
         size_t dot_pos = name.find('.');
-        // std::cerr<<"namesub="<<name.substr(0,dot_pos)<<std::endl;
         unsigned long conn_id = std::stoul(name.substr(0, dot_pos));
         if (conn_id >= INT_MAX) continue;
 
@@ -178,7 +162,6 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
         brick->openReadWrite(brick_path);
         container->brick_files_.insert({(uint32_t)conn_id,brick});
     }
-    // std::cerr<<"brick files len"<<container->brick_files_.size()<<std::endl;
 
     closedir(dir);
     return container;
@@ -187,7 +170,6 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
 // open brick file for each topic and insert it to the map
 void Container::openBrick(ChunkedFile* brick, uint32_t conn_id) {
     auto brick_path = dir_name_ + "/" + std::to_string(conn_id) + ".brick";
-    // std::cerr<<dir_name_<<std::endl;
     brick->openWrite(brick_path);
     brick_files_.insert({conn_id, brick});
 }
@@ -202,10 +184,8 @@ void Container::openWrite() {
 void Container::startWriting() { 
     writeVersion();
     file_header_pos_ = header_brick->getOffset();
-    // std::cout<<"file_header_pos_"<<file_header_pos_<<std::endl; 13
     writeFileHeaderRecord(header_brick);
     index_data_pos_ = header_brick->getOffset();
-    // std::cout<<"index_data_pos_"<<index_data_pos_<<std::endl; 4117
     brick_files_.insert({INT_MAX, header_brick});
 }
 
@@ -219,9 +199,6 @@ void Container::writeVersion() {
 void Container::writeFileHeaderRecord(ChunkedFile *file) {
     connection_count_ = connections_.size();
     // chunk_count_      = chunks_.size();
-
-    // CONSOLE_BRIDGE_logDebug("Writing FILE_HEADER [%llu]: index_pos=%llu connection_count=%d chunk_count=%d",
-    //           (unsigned long long) file_.getOffset(), (unsigned long long) index_data_pos_, connection_count_, chunk_count_);
     
     // Write file header record
     M_string header;
@@ -231,8 +208,6 @@ void Container::writeFileHeaderRecord(ChunkedFile *file) {
     header[CHUNK_COUNT_FIELD_NAME]      = toHeaderString(&chunk_count_);
     header[START_TIME_FIELD_NAME]       = toHeaderString(&start_time_);
     header[END_TIME_FIELD_NAME]         = toHeaderString(&end_time_);
-    // ROS_INFO("wfh:start_time_ sec: %u , nsec: %u", start_time_.sec,start_time_.nsec);
-    // ROS_INFO("wfh:end_time_ sec: %u , nsec: %u", end_time_.sec,end_time_.nsec);
     // encryptor_->addFieldsToFileHeader(header);
 
     boost::shared_array<uint8_t> header_buffer;
@@ -349,18 +324,14 @@ void Container::writeConnectionRecord(ConnectionInfo const* connection_info) {
 void Container::readConnectionRecord(ChunkedFile* file,ConnectionInfo* connection_info) {
     M_string header;
 
-    // std::cerr<<"reading connection record header"<<std::endl;
     readHeader(file,header);
 
-    // std::cerr<<"unpacking connection record header"<<std::endl;
     connection_info->topic = header[TOPIC_FIELD_NAME];
     connection_info->id = fromHeaderString<uint32_t>(header[CONNECTION_FIELD_NAME]);
 
-    // std::cerr<<"reading connection info header"<<std::endl;
     connection_info->header = boost::make_shared<ros::M_string>();
     readHeader(file,*connection_info->header);
 
-    // std::cerr<<"maintaining topic&&header mapping"<<std::endl;
     // restore topic_connections_ids_ && header_connections_ids_
     topic_connection_ids_.insert({connection_info->topic,connection_info->id});
     header_connection_ids_.insert({*connection_info->header,connection_info->id});
@@ -410,7 +381,6 @@ void Container::writeChunkInfoRecords() {
 }
 
 void Container::close() {
-    // std::cerr<<"Container closed"<<std::endl;
     ROS_INFO("Container closed");
     dumpIndex();
     stopWriting();

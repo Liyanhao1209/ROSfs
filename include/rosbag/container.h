@@ -343,7 +343,6 @@ void Container::writeMessageDataRecord(ChunkedFile *file, uint32_t conn_id, ros:
         chunk_info_.end_time = time;
     if (time < chunk_info_.start_time || (chunk_info_.start_time==ros::Time(0,0))){
         chunk_info_.start_time = time;
-        // ROS_INFO("chunk info start_time = %u,%u",chunk_info_.start_time.sec,chunk_info_.start_time.nsec);
     }  
         
 }

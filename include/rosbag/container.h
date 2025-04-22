@@ -259,68 +259,57 @@ void Container::doWrite(std::string const& topic, ros::Time const& time, uint64_
         brick = brick_files_[conn_id];
     }
 
-    {
-        // Seek to the end of the file (needed in case previous operation was a read)
-        seek(brick, 0, std::ios::end);
-        brick_filesize_[conn_id] = brick->getOffset();
-        if (!chunk_open_) {
-            chunk_info_.pos        = 0;
-            chunk_info_.start_time = time;
-            chunk_info_.end_time   = time;
-            chunk_open_ = true;
-        }
-
-
-        // Write connection info record, if necessary
-        if (connection_info == nullptr) {
-            connection_info = new ConnectionInfo();
-            connection_info->id       = conn_id;
-            connection_info->topic    = topic;
-            connection_info->datatype = std::string(ros::message_traits::datatype(msg));
-            connection_info->md5sum   = std::string(ros::message_traits::md5sum(msg));
-            connection_info->msg_def  = std::string(ros::message_traits::definition(msg));
-            if (connection_header != nullptr) {
-                connection_info->header = connection_header;
-            }
-            else {
-                connection_info->header = boost::make_shared<ros::M_string>();
-                (*connection_info->header)["type"]               = connection_info->datatype;
-                (*connection_info->header)["md5sum"]             = connection_info->md5sum;
-                (*connection_info->header)["message_definition"] = connection_info->msg_def;
-            }
-            connections_[conn_id] = connection_info;
-            // No need to encrypt connection records in chunks
-            writeConnectionRecord(connection_info);
-            appendConnectionRecordToBuffer(outgoing_chunk_buffer_, connection_info);
-        }
-
-        // Increment the connection count
-        chunk_info_.connection_counts[connection_info->id]++;
-        
-        uint64_t curr_time_sec = time.sec;
-        if (msg_start_time_ == 0 && is_recording_ == false) {
-            msg_start_time_ = time.sec;
-            is_recording_ = true;
-        }
-        uint64_t offset = brick->getOffset();
-
-        // Write the message data
-        writeMessageDataRecord(brick, conn_id, time, msg);
-        stopWriting();
-        time_index.insert(rosbag::ROSTimeStamp(time.sec,msg_idx),rosbag::TIData{.conn=conn_id,.offset=offset});
-
-        // index_buffer_.emplace(conn_id, rosbag::ROSTimeStamp(time.sec,msg_idx), offset);
-
-        // // update index periodically
-        // if (curr_time_sec - msg_start_time_ >= 1) {
-        //     // auto start = std::chrono::steady_clock::now();
-        //     dumpIndex();
-        //     msg_start_time_ = curr_time_sec;
-        //     // auto end = std::chrono::steady_clock::now();
-        //     // std::chrono::duration<double> dump_time = end - start;
-        //     // ROS_INFO("dump index took %lf s", dump_time.count());
-        // }
+    // Seek to the end of the file (needed in case previous operation was a read)
+    seek(brick, 0, std::ios::end);
+    brick_filesize_[conn_id] = brick->getOffset();
+    if (!chunk_open_) {
+        chunk_info_.pos        = 0;
+        chunk_info_.start_time = time;
+        chunk_info_.end_time   = time;
+        chunk_open_ = true;
     }
+
+
+    // Write connection info record, if necessary
+    if (connection_info == nullptr) {
+        connection_info = new ConnectionInfo();
+        connection_info->id       = conn_id;
+        connection_info->topic    = topic;
+        connection_info->datatype = std::string(ros::message_traits::datatype(msg));
+        connection_info->md5sum   = std::string(ros::message_traits::md5sum(msg));
+        connection_info->msg_def  = std::string(ros::message_traits::definition(msg));
+        if (connection_header != nullptr) {
+            connection_info->header = connection_header;
+        }
+        else {
+            connection_info->header = boost::make_shared<ros::M_string>();
+            (*connection_info->header)["type"]               = connection_info->datatype;
+            (*connection_info->header)["md5sum"]             = connection_info->md5sum;
+            (*connection_info->header)["message_definition"] = connection_info->msg_def;
+        }
+        connections_[conn_id] = connection_info;
+        // No need to encrypt connection records in chunks
+        writeConnectionRecord(connection_info);
+        appendConnectionRecordToBuffer(outgoing_chunk_buffer_, connection_info);
+    }
+
+    // Increment the connection count
+    chunk_info_.connection_counts[connection_info->id]++;
+    
+    uint64_t curr_time_sec = time.sec;
+    if (msg_start_time_ == 0 && is_recording_ == false) {
+        // ROS_INFO("dowrite:time sec: %u , nsec: %u", time.sec,time.nsec);
+        start_time_ = time;
+        // ROS_INFO("dowrite:start_time_ sec: %u , nsec: %u", start_time_.sec,start_time_.nsec);
+        msg_start_time_ = time.sec;
+        is_recording_ = true;
+    }
+    uint64_t offset = brick->getOffset();
+
+    // Write the message data
+    writeMessageDataRecord(brick, conn_id, time, msg);
+    stopWriting();
+    time_index.insert(rosbag::ROSTimeStamp(time.sec,msg_idx),rosbag::TIData{.conn=conn_id,.offset=offset});
 }
 
 template<class T>
@@ -345,10 +334,6 @@ void Container::writeMessageDataRecord(ChunkedFile *file, uint32_t conn_id, ros:
     // MessageInstance for our own bag
     seek(file, 0, std::ios::end);
     brick_filesize_[conn_id] = file->getOffset();
-    // std::cerr<<"conn_id:"<<conn_id<<",offset:"<<file->getOffset()<<std::endl;
-
-    // CONSOLE_BRIDGE_logDebug("Writing MSG_DATA [%llu:%d]: conn=%d sec=%d nsec=%d data_len=%d",
-    //           (unsigned long long) file_.getOffset(), getChunkOffset(), conn_id, time.sec, time.nsec, msg_ser_len);
 
     writeHeader(file, header);
     writeDataLength(file, msg_ser_len);
@@ -356,8 +341,11 @@ void Container::writeMessageDataRecord(ChunkedFile *file, uint32_t conn_id, ros:
     // Update the current chunk time range
     if (time > chunk_info_.end_time)
         chunk_info_.end_time = time;
-    else if (time < chunk_info_.start_time)
+    if (time < chunk_info_.start_time || (chunk_info_.start_time==ros::Time(0,0))){
         chunk_info_.start_time = time;
+        // ROS_INFO("chunk info start_time = %u,%u",chunk_info_.start_time.sec,chunk_info_.start_time.nsec);
+    }  
+        
 }
 
 } // namespace rosbag

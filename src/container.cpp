@@ -231,6 +231,8 @@ void Container::writeFileHeaderRecord(ChunkedFile *file) {
     header[CHUNK_COUNT_FIELD_NAME]      = toHeaderString(&chunk_count_);
     header[START_TIME_FIELD_NAME]       = toHeaderString(&start_time_);
     header[END_TIME_FIELD_NAME]         = toHeaderString(&end_time_);
+    // ROS_INFO("wfh:start_time_ sec: %u , nsec: %u", start_time_.sec,start_time_.nsec);
+    // ROS_INFO("wfh:end_time_ sec: %u , nsec: %u", end_time_.sec,end_time_.nsec);
     // encryptor_->addFieldsToFileHeader(header);
 
     boost::shared_array<uint8_t> header_buffer;

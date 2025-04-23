@@ -22,7 +22,7 @@ process_container() {
         cd $BASE_DIR &&
         ulimit -S -v unlimited &&
         trickle -d $bandwidth -u $bandwidth python3 $PYTHON_SCRIPT
-    " > /dev/null 2>&1
+    " > log_$i.txt 2>&1
 }
 
 for i in $(seq 1 $cluster_size); do

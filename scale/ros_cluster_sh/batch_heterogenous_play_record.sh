@@ -23,7 +23,7 @@ play_record() {
     docker exec "$container_name" bash -c "source /root/ros_catkin_ws/devel/setup.bash && rosbag record $record_topics --rosfs --duration=30 -O /data/rosfs_robot_node_$i" > "/dev/null" 2>&1 &
     sleep 2
 
-    docker exec "$container_name" bash -c "source /root/ros_catkin_ws/devel/setup.bash && rosbag play /data/test.bag --duration=30" > /dev/null 2>&1
+    docker exec "$container_name" bash -c "source /root/ros_catkin_ws/devel/setup.bash && rosbag play /data/outdoor.bag --duration=30" > /dev/null 2>&1
 }
 
 for i in $(seq 1 $cluster_size); do

@@ -1,0 +1,1 @@
+python3 png2bag.py --dataset /data/GroundAir/dataset/big_city_-04_-35/aerial/image /data/GroundAir/dataset/big_city_-04_-35/street/image --output ./target/ga.bag

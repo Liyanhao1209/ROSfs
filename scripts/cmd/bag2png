@@ -1,0 +1,1 @@
+python3 bag2png.py --bag ./target/ga.bag --output ./target/images

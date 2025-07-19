@@ -1,1 +1,2 @@
 python3 bag2png.py --bag ./target/ga.bag --output ./target/images
+python3 bag2png.py --bag ./target/ga_container.bag --output ./target/images_rosfs --format rosfs

@@ -7,17 +7,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--bag",'-b',type = str, nargs = 1,help = "input bag file",required=True)
     parser.add_argument("--output",'-o', type = str, nargs=1, help="output png directory path", required=True)
+    parser.add_argument("--format",'-f',type=str,nargs=1,default=None,help='bag format',required=False)
     
     args = parser.parse_args()
     bag_path = args.bag[0]
     output = args.output[0]
-    
+    format = args.format[0]
+        
     try:
         os.mkdir(output)
     except Exception as e:
         print(e)
     
-    bag = rosbag.Bag(bag_path)
+    if format is None:
+        bag = rosbag.Bag(bag_path)
+    else:
+        bag = rosbag.Bag(bag_path,format)
     bridge = CvBridge()
     
     bar = tqdm.tqdm(total=bag.get_message_count(),desc="writing rgb images")

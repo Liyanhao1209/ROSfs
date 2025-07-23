@@ -2,3 +2,4 @@ target
 dataset
 *.png
 *.bag
+*.txt

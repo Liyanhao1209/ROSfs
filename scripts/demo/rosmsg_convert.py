@@ -29,7 +29,6 @@ if __name__ == "__main__":
         break
 
     o1,o2 = deserialize_message(raw1),deserialize_message(raw2)
-    print(t1,t2)
     rosfs_target = "./test.bag"
     try:
         shutil.rmtree(rosfs_target)

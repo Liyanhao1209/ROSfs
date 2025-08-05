@@ -12,17 +12,17 @@ if __name__ == "__main__":
     for topic,m,t,conn_header in bag.read_messages(raw=True,return_connection_header=True):
         tp,msg,ts,ch = topic,m,t,ch
         break
-    bag = rosbag.Bag('test.bag','w')
-    bag.write(tp,msg,ts,raw=True,connection_header=ch)
-    # try:
-    #     shutil.rmtree(target)
-    # except Exception as e:
-    #     ...
+    # bag = rosbag.Bag('test.bag','w')
+    # bag.write(tp,msg,ts,raw=True,connection_header=ch)
+    try:
+        shutil.rmtree(target)
+    except Exception as e:
+        ...
 
-    # try:
-    #     rosbag.rosfs_timekv.create(target)
-    # except Exception as e:
-    #     ...
-    # rosfs = rosbag.Bag(target,"rosfs")
+    try:
+        rosbag.rosfs_timekv.create(target)
+    except Exception as e:
+        ...
+    rosfs = rosbag.Bag(target,"rosfs")
 
-    # rosfs.rosfs_batch_write([tp],[msg],[ts],raw=True,connection_headers=[ch])
+    rosfs.rosfs_batch_write([tp],[msg],[ts],raw=True,connection_headers=[ch])

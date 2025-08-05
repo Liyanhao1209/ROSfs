@@ -10,6 +10,7 @@
 #include <chrono>
 #include <set>
 #include <stdexcept>
+#include <sys/stat.h>
 
 #include "rosbag/datatype.h"
 
@@ -344,7 +345,9 @@ void Container::writeMessageDataRecord(ChunkedFile *file, uint32_t conn_id, ros:
     if (time < chunk_info_.start_time || (chunk_info_.start_time==ros::Time(0,0))){
         chunk_info_.start_time = time;
     }  
-        
+    
+    file->flush();
+    file->fsync();
 }
 
 } // namespace rosbag

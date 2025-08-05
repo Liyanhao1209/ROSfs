@@ -9,6 +9,10 @@ namespace rosbag {
     struct TIData {
         uint32_t conn;
         uint64_t offset;
+
+        friend std::ostream& operator<<(std::ostream& os, const TIData& data) {
+            return os << "TIData{ conn: " << data.conn << ", offset: " << data.offset << " }";
+        }
     };
 
     struct ROSTimeStamp {
@@ -137,6 +141,11 @@ namespace rosbag {
     struct kvPair {
         rosbag::ROSTimeStamp ts;
         rosbag::TIData data;
+
+        friend std::ostream& operator<<(std::ostream& os, const kvPair& kv) {
+            return os << "kvPair{ ts: " << kv.ts << ", data: " << kv.data << " }";
+        }
+
     };
 }
 

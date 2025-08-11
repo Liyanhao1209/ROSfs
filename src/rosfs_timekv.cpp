@@ -112,7 +112,7 @@ static PyObject *rosfs_container_create(PyObject *self,PyObject *args){
         return NULL;
     }
 
-    auto container_ptr = rosbag::Container::create(path);
+    auto container_ptr = rosbag::Container::create(path,rosbag::ContainerFormat::OFFLINE);
     container_ptr->openWrite();
     container_ptr->close();
 
@@ -247,7 +247,7 @@ static PyObject *rosfs_timekv_insert(PyObject *self, PyObject *args) {
         ros::serialization::IStream stream(buffer.data(), buffer.size());
         msg.read(stream);
 
-        auto container_ptr = rosbag::Container::open(path);
+        auto container_ptr = rosbag::Container::open(path,rosbag::ContainerFormat::OFFLINE);
         // generate unique msg id
         // In case the same timestamp appears
         auto rts = container_ptr->getMsgIdx(rosbag::ROSTimeStamp{sec+1,0});

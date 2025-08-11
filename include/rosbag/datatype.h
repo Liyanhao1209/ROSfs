@@ -6,6 +6,11 @@
 
 namespace rosbag {
 
+    enum ContainerFormat {
+        OFFLINE,
+        ONLINE
+    };
+
     struct TIData {
         uint32_t conn;
         uint64_t offset;

@@ -3,7 +3,6 @@
 #include "rosbag/query.h"
 #include "rosbag/view.h"
 
-
 #include <signal.h>
 #include <assert.h>
 #include <iomanip>
@@ -30,9 +29,10 @@ namespace rosbag {
 
 // Container::Container() { init(); }
 
-Container::Container(std::string const& filename, int root_fd, TIT &&ti, ChunkedFile* header) :
+Container::Container(std::string const& filename, int root_fd, TIT &&ti, ChunkedFile* header, ContainerFormat format) :
         dir_name_{filename}, 
         mode_{BagMode::Write}, 
+        format_{format},
         root_fd_{root_fd}, 
         time_index{std::move(ti)}, 
         header_brick{header},
@@ -45,14 +45,26 @@ Container::Container(std::string const& filename, int root_fd, TIT &&ti, Chunked
         msg_start_time_{0},
         is_recording_{false},
         current_buffer_{0}
-{}
+{
+    if (format_==ONLINE) {
+        sync_thread_ = std::thread(&Container::syncDaemon, this);
+    }
+}
 
 Container::~Container() { 
+    // Signal the sync thread to stop
+    if (format_==ONLINE) {
+        stop_sync_ = true;
+        if (sync_thread_.joinable()) {
+            sync_thread_.join();
+        }
+    }
+    // // Close the container
     // close();
 }
 
 // open and insert header file and write version
-std::unique_ptr<Container> Container::create(std::string const& filename) {
+std::unique_ptr<Container> Container::create(std::string const& filename,ContainerFormat format) {
     ROS_INFO("Opening Container, mkdir first");
     int res = mkdir(filename.c_str(), 0755);
     if (res == -1) {
@@ -75,10 +87,10 @@ std::unique_ptr<Container> Container::create(std::string const& filename) {
         return nullptr;
     }
 
-    return std::unique_ptr<Container>(new Container{filename, root_fd, std::move(time_index), header});
+    return std::unique_ptr<Container>(new Container{filename, root_fd, std::move(time_index), header,format});
 }
 
-std::unique_ptr<Container> Container::open(std::string const& filename) {
+std::unique_ptr<Container> Container::open(std::string const& filename,ContainerFormat format) {
     ROS_INFO("Opening Container");
 
     int root_fd = ::open(filename.c_str(), O_PATH | O_DIRECTORY);
@@ -100,7 +112,7 @@ std::unique_ptr<Container> Container::open(std::string const& filename) {
     header_brick->openReadWrite(header_path);
 
     auto container = std::unique_ptr<Container>(new Container(
-        filename,root_fd,std::move(time_index),header_brick
+        filename,root_fd,std::move(time_index),header_brick,format
     ));
 
     // restore file_header_pos_ && index_data_pos_
@@ -399,11 +411,30 @@ void Container::close() {
 
 // update bag header and connection info
 void Container::stopWriting() {
+    if (!header_brick->isOpen()){
+        return;
+    }
     seek(header_brick, index_data_pos_);
     writeConnectionRecords();
     writeChunkInfoRecords();
     seek(header_brick, file_header_pos_);
     writeFileHeaderRecord(header_brick);
+}
+
+void Container::flushAllBricks() {
+    for (auto &con_f: brick_files_) {
+        con_f.second->flush();
+        con_f.second->fsync();
+    }
+}
+
+void Container::syncDaemon() {
+    while (!stop_sync_) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        flushAllBricks();
+        dumpIndex();
+    }
 }
 
 uint64_t Container::getSize()     const { return container_size_; }

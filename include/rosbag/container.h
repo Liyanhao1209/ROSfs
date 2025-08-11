@@ -11,6 +11,7 @@
 #include <set>
 #include <stdexcept>
 #include <sys/stat.h>
+#include <thread>
 
 #include "rosbag/datatype.h"
 
@@ -28,12 +29,12 @@ public:
     Container();
     ~Container();
 
-    explicit Container(std::string const& filename, int root_fd, TIT &&ti, ChunkedFile* header);
+    explicit Container(std::string const& filename, int root_fd, TIT &&ti, ChunkedFile* header, ContainerFormat format);
 
     // factory constructor to create a container
     // Use should always use this funtion to create a container
-    static std::unique_ptr<Container> create(std::string const& filename);
-    static std::unique_ptr<Container> open(std::string const& filename);
+    static std::unique_ptr<Container> create(std::string const& filename,ContainerFormat format = ONLINE);
+    static std::unique_ptr<Container> open(std::string const& filename,ContainerFormat format = ONLINE);
     
     void openWrite();
 
@@ -74,7 +75,9 @@ private:
 
     void startWriting();
     void stopWriting();
-    
+    void flushAllBricks();
+    void syncDaemon();
+
     // Writing
 
     void writeVersion();
@@ -148,6 +151,7 @@ private:
 private:
     std::string     dir_name_;
     BagMode         mode_;
+    ContainerFormat format_;
     int             root_fd_;
     TIT             time_index;
     ChunkedFile*    header_brick;
@@ -182,6 +186,9 @@ private:
     std::map<uint32_t, uint32_t>                   connection_counts_;   //!< number of messages in each connection 
 
     std::queue<IndexBuffer>       index_buffer_;
+    uint64_t                      index_buf_threshold = 0x1000;
+    std::thread                   sync_thread_;
+    std::atomic<bool>             stop_sync_{false};
     boost::mutex                  index_mutex_;      //!< mutex for index buffer
 
 
@@ -309,8 +316,17 @@ void Container::doWrite(std::string const& topic, ros::Time const& time, uint64_
 
     // Write the message data
     writeMessageDataRecord(brick, conn_id, time, msg);
-    stopWriting();
-    time_index.insert(rosbag::ROSTimeStamp(time.sec,msg_idx),rosbag::TIData{.conn=conn_id,.offset=offset});
+    if (format_==OFFLINE) {
+        stopWriting();
+        time_index.insert(rosbag::ROSTimeStamp(time.sec,msg_idx),rosbag::TIData{.conn=conn_id,.offset=offset});
+    } else if (format_==ONLINE)
+    {
+        index_buffer_.emplace(conn_id,rosbag::ROSTimeStamp(time.sec,msg_idx),offset);
+        if (index_buffer_.size()*sizeof(rosbag::IndexBuffer) >= index_buf_threshold) {
+            flushAllBricks();
+            dumpIndex();
+        }
+    }
 }
 
 template<class T>
@@ -346,8 +362,8 @@ void Container::writeMessageDataRecord(ChunkedFile *file, uint32_t conn_id, ros:
         chunk_info_.start_time = time;
     }  
     
-    file->flush();
-    file->fsync();
+    // file->flush();
+    // file->fsync();
 }
 
 } // namespace rosbag

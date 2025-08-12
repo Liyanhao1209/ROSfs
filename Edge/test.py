@@ -22,7 +22,6 @@ if __name__ == "__main__":
     local_ip = get_local_ip()
     
     rosfs_backend = f"./{local_ip}.bag"
-    print(os.stat(f"./{local_ip}.bag/time_index").st_ino)
     
     st = None
     while st is None:

@@ -2903,7 +2903,74 @@ class _BagReader200(_BagReader):
             del self.bag._connection_indexes[id]
 
         self.bag._connection_indexes_read = True
+        
+    # ROSfs only
+    def read_messages_by_id(self,topics,start_id,cnt,connection_filter,raw,return_connection_header=False):
+        connections = self.bag._get_connections(topics,connection_filter)
+        
+        if not self.bag._mode in ['bora','rosfs']:
+            raise ROSBagException("This reader interface is only supported on mode rosfs")
+        
+        ids = [conn.id for conn in connections]
+        entries = self.bag._tm.topic_query(ids)
+        for entry in entries:
+            
+            def skip_connection_records(f):
+                while True:
+                    header = _read_header(f)
+                    op = _read_uint8_field(header,'op')
+                    if op != _OP_CONNECTION:
+                        break
+                    _skip_sized(f)
+                return (header,op)
+            
+            def seek_by_id(f,start_id):
+                for _ in range(start_id):
+                    header,op = skip_connection_records(f)
+                    op_check(op,_OP_MSG_DATA)
+                return (header,op)
+            
+            def op_check(op,op_code):
+                if op != op_code:
+                        raise ROSBagException('Expecting OP_MSG_DATA,got %d' % op)
+            
+            def unpack_record(header,op,raw,return_connection_header):
+                op_check(op,_OP_MSG_DATA)
+                
+                connection_id = _read_uint32_field(header, 'conn')
+                t             = _read_time_field(header, 'time')
 
+                connection_info = self.bag._connections[connection_id]
+
+                try:
+                    msg_type = _get_message_type(connection_info)
+                except KeyError:
+                    raise ROSBagException(
+                        'Cannot deserialize messages of type [%s].  Message was not preceded in bag by definition' % connection_info.datatype)
+
+                data = _read_record_data(f)
+
+                if raw:
+                    msg = data,connection_info
+                else:
+                    msg = msg_type()
+                    msg.deserialize(data)
+
+                if return_connection_header:
+                    return BagMessageWithConnectionHeader(connection_info.topic, msg, t, connection_info.header)
+                else:
+                    return BagMessage(connection_info.topic, msg, t)
+                
+            f = open(entry.path,'rb')
+            
+            header,op = seek_by_id(f,start_id=start_id)
+            yield unpack_record(header,op,raw,return_connection_header=return_connection_header)
+            
+            for _ in range(cnt-1):
+                header,op = skip_connection_records(f)
+                op_check(op,_OP_MSG_DATA)
+                yield unpack_record(header,op,raw,return_connection_header=return_connection_header)
+                
     # ROSfs only
     def read_messages(self, topics, start_time, end_time, connection_filter, raw, return_connection_header=False):
         connections = self.bag._get_connections(topics, connection_filter)

@@ -570,6 +570,13 @@ class Bag(object):
             topics = [topics]
         
         return self._reader.read_messages(topics, start_time, end_time, connection_filter, raw, return_connection_header)
+    
+    def read_messages_by_id(self,topics=None,start_id=None,cnt=None,connection_filter=None,raw=False,return_connection_header=False):
+        self.flush()
+        if topics and type(topics) is str:
+            topics = [topics]
+        
+        return self._reader.read_messages_by_id(topics,start_id,cnt,connection_filter,raw,return_connection_header)
 
     def read_latest_messages(self, topics=None, time_len=None, raw=False):
         """
@@ -2914,7 +2921,6 @@ class _BagReader200(_BagReader):
         ids = [conn.id for conn in connections]
         entries = self.bag._tm.topic_query(ids)
         for entry in entries:
-            
             def skip_connection_records(f):
                 while True:
                     header = _read_header(f)
@@ -2928,6 +2934,7 @@ class _BagReader200(_BagReader):
                 for _ in range(start_id):
                     header,op = skip_connection_records(f)
                     op_check(op,_OP_MSG_DATA)
+                    _skip_sized(f)
                 return (header,op)
             
             def op_check(op,op_code):
@@ -2962,8 +2969,7 @@ class _BagReader200(_BagReader):
                     return BagMessage(connection_info.topic, msg, t)
                 
             f = open(entry.path,'rb')
-            
-            header,op = seek_by_id(f,start_id=start_id)
+            header,op = seek_by_id(f,start_id=start_id) if start_id else skip_connection_records(f)
             yield unpack_record(header,op,raw,return_connection_header=return_connection_header)
             
             for _ in range(cnt-1):

@@ -1,8 +1,14 @@
-import pickle,time,concurrent.futures
+import pickle,time,concurrent.futures,sys,shutil,os
 import zmq,tqdm
 import genpy, genmsg
 
-default_time_step = 10 # second
+from cv_bridge import CvBridge
+import cv2
+
+import tf
+import numpy as np
+
+default_time_step = 0 # second
 
 class ROSBagException(Exception):
     """
@@ -14,6 +20,21 @@ class ROSBagException(Exception):
 
     def __str__(self):
         return self.value
+
+def convert_image(image):
+    cv = CvBridge()
+    
+    return cv.imgmsg_to_cv2(image,desired_encoding="mono8" if image.encoding is None else image.encoding)
+
+def convert_pose(pose):
+    position = [pose.position.x, pose.position.y, pose.position.z]
+    quaternion = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
+    
+    rotation_matrix = tf.transformations.quaternion_matrix(quaternion)
+    homogeneous_matrix = rotation_matrix
+    homogeneous_matrix[:3, 3] = position
+    
+    return homogeneous_matrix
     
 
 class Client:
@@ -27,8 +48,9 @@ class Client:
         self._zmqcontext_ = zmq.Context()
         self._zmqsocket_ =  self._zmqcontext_.socket(zmq.REQ)
         
+        print(server_ip,server_port)
         self._zmqsocket_.connect(f"tcp://{server_ip}:{server_port}")
-    
+        
     def _get_message_type(self,info):
         try:
             message_type = genpy.dynamic.generate_dynamic(info.datatype, info.msg_def)[info.datatype]
@@ -53,14 +75,16 @@ class Client:
     def query_by_pose(self,pose_lb,pose_ub):
         self._zmqsocket_.send_multipart(
             (
-                self._pose_.decode(),
-                self._image_.decode(),
+                "query".encode(),
                 pickle.dumps(pose_lb),
-                pickle.dumps(pose_ub)
+                pickle.dumps(pose_ub)   
             )
         )
+        print(f"send query:{pose_lb},{pose_ub}")
         
-        raw_images,raw_poses = pickle.dumps(self._zmqsocket_.recv_multipart())
+        raw_images,raw_poses = self._zmqsocket_.recv_multipart()
+        raw_images = pickle.loads(raw_images)
+        raw_poses = pickle.loads(raw_poses)
         images,poses = [],[]
         for image in raw_images:
             images.append(self._deserialize_message(image))
@@ -68,6 +92,9 @@ class Client:
             poses.append(self._deserialize_message(pose))
             
         return [images,poses]
+    
+    def kill(self):
+        self._zmqsocket_.send_multipart((b'kill',b'kill',b'kill'))
     
     def close_session(self):
         self._zmqsocket_.close()
@@ -106,7 +133,10 @@ class QueryFileIterator:
         with open(self._path_,'r',encoding='utf-8') as qf:
             self._query_ = qf.readlines()
         self._qptr = 0
-        
+    
+    def get_fpth(self):
+        return self._path_
+    
     def isValid(self):
         return self._qptr < len(self._query_)
     
@@ -116,15 +146,20 @@ class QueryFileIterator:
         spatial_str = self._query_[self._qptr]
         self._qptr += 1
         
-        return list(map(float,spatial_str))
+        return list(map(float,spatial_str.split()))
         
-        
-
-def query_trigger(startup_time=default_time_step):
+def query_trigger(dump_pth='./dump_buffer',startup_time=default_time_step):
     startup_bar = tqdm.tqdm(total=startup_time,desc="Server Startup")
-    for i in range(startup_time):
+    for _ in range(startup_time):
         time.sleep(1)
         startup_bar.update(1)
+        
+    try:
+        shutil.rmtree(dump_pth)
+    except Exception as e:
+        print(f"Error {e} happened while query initializing")
+    finally:
+        os.makedirs(dump_pth)
     
     trigger_map = {
         ip2key[ip] : QueryFileIterator(ip2query[ip]) for ip in edge_devices_ips
@@ -134,21 +169,40 @@ def query_trigger(startup_time=default_time_step):
         ip2key[ip] : Client(ip,ip2port[ip],ip2topic[ip][0],ip2topic[ip][1]) for ip in edge_devices_ips
     }
     
+    msg_cnt = 0
     keys = set(list(ip2key.values()))
     while True:
-        key = input("input trigger")
+        key = input("input trigger\n")
+        
         if key=="kill":
             break
-        if key not in key:
+        if key not in keys:
             print("invalid key")
             continue
+        
+        
         trigger = trigger_map[key]
         spatial_index = trigger.next()
+        if spatial_index is None:
+            print(f"end of query file {trigger.get_fpth()}")
+            continue
         client = clients_map[key]
         images,poses = client.query_by_pose(spatial_index[0:3],spatial_index[3:])
-        print(len(images,poses))
+        
+        def convert_and_save(images,poses,msg_cnt):
+            assert len(images)==len(poses)
+            for image,pose in zip(images,poses):
+                cv_image,ndarray_pose = convert_image(image),convert_pose(pose)
+                np.save(f"{dump_pth}/{msg_cnt}.npy",ndarray_pose)
+                cv2.imwrite(f"{dump_pth}/{msg_cnt}.png",cv_image)
+                msg_cnt += 1
+            
+            return msg_cnt
+        
+        msg_cnt = convert_and_save(images,poses,msg_cnt=msg_cnt)
     
     for c in clients_map.values():
+        c.kill()
         c.close_session()
             
 if __name__ == "__main__":

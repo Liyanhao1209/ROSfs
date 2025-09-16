@@ -572,6 +572,10 @@ class Bag(object):
         return self._reader.read_messages(topics, start_time, end_time, connection_filter, raw, return_connection_header)
     
     def read_messages_by_id(self,topics=None,start_id=None,cnt=None,connection_filter=None,raw=False,return_connection_header=False):
+        for tp in topics:
+            total_msg_cnt = self.get_message_count([tp])
+            if start_id+cnt>total_msg_cnt:
+                raise ROSBagException(f"Message count of topic:{tp}={total_msg_cnt} is less than start_id+cnt({start_id}+{cnt}),invoke \'get_message_count(topic_filter)\' first to check message count of each topic")
         self.flush()
         if topics and type(topics) is str:
             topics = [topics]
@@ -2931,17 +2935,17 @@ class _BagReader200(_BagReader):
                 return (header,op)
             
             def seek_by_id(f,start_id):
+                # skip [0,...,start_id-1] msg record
                 for _ in range(start_id):
                     header,op = skip_connection_records(f)
                     op_check(op,_OP_MSG_DATA)
                     _skip_sized(f)
-                return (header,op)
             
             def op_check(op,op_code):
                 if op != op_code:
                         raise ROSBagException('Expecting OP_MSG_DATA,got %d' % op)
             
-            def unpack_record(header,op,raw,return_connection_header):
+            def unpack_record(f,header,op,raw,return_connection_header):
                 op_check(op,_OP_MSG_DATA)
                 
                 connection_id = _read_uint32_field(header, 'conn')
@@ -2956,6 +2960,7 @@ class _BagReader200(_BagReader):
                         'Cannot deserialize messages of type [%s].  Message was not preceded in bag by definition' % connection_info.datatype)
 
                 data = _read_record_data(f)
+                
 
                 if raw:
                     msg = data,connection_info
@@ -2969,13 +2974,12 @@ class _BagReader200(_BagReader):
                     return BagMessage(connection_info.topic, msg, t)
                 
             f = open(entry.path,'rb')
-            header,op = seek_by_id(f,start_id=start_id) if start_id else skip_connection_records(f)
-            yield unpack_record(header,op,raw,return_connection_header=return_connection_header)
+            seek_by_id(f,start_id)
             
-            for _ in range(cnt-1):
+            for _ in range(cnt):
                 header,op = skip_connection_records(f)
                 op_check(op,_OP_MSG_DATA)
-                yield unpack_record(header,op,raw,return_connection_header=return_connection_header)
+                yield unpack_record(f,header,op,raw,return_connection_header=return_connection_header)
                 
     # ROSfs only
     def read_messages(self, topics, start_time, end_time, connection_filter, raw, return_connection_header=False):

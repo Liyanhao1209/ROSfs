@@ -58,7 +58,7 @@ rosbag::RecorderOptions parseOptions(int argc, char** argv) {
       ("publish,p", "Publish a msg when the record begin")
       ("output-prefix,o", po::value<std::string>(), "prepend PREFIX to beginning of bag name")
       ("output-name,O", po::value<std::string>(), "record bagnamed NAME.bag")
-      ("buffsize,b", po::value<int>()->default_value(1024), "Use an internal buffer of SIZE MB (Default: 256)")
+      ("buffsize,b", po::value<int>()->default_value(1024), "Use an internal buffer of SIZE MB (Default: 1024)")
       ("chunksize", po::value<int>()->default_value(768), "Set chunk size of message data, in KB (Default: 768. Advanced)")
       ("limit,l", po::value<int>()->default_value(0), "Only record NUM messages on each topic")
       ("min-space,L", po::value<std::string>()->default_value("1G"), "Minimum allowed space on recording device (use G,M,k multipliers)")

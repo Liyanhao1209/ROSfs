@@ -41,7 +41,8 @@ class Server:
             rdt = threading.Thread(target=self._reader_daemon)
             rdt.daemon = True
             rdt.start()
-            
+        
+        self._server_closed_ = False
         start_reader_daemon()
         
     def _get_message_type(self,info):
@@ -65,34 +66,60 @@ class Server:
         
     def _start_reading(self):
         rosfs_handler = rosbag.Bag(self._rosfspth_,'rosfs')
+        raw = True
         reading_ub = min(rosfs_handler.get_message_count(self._image_),rosfs_handler.get_message_count(self._pose_))
         
         def read_by_id(topic,start_id,cnt,handler):
-            return handler.read_messages_by_id([topic],start_id,cnt,raw=True,return_connection_header=False)
+            return handler.read_messages_by_id([topic],start_id,cnt,raw=raw,return_connection_header=False)
             
         read_cnt = reading_ub - 1 - self._msgidxptr_ + 1
+
         if read_cnt == 0:
             return
-        for raw_image,raw_pose in zip(
-            read_by_id(self._image_,self._msgidxptr_,read_cnt,rosfs_handler),
-            read_by_id(self._pose_,self._msgidxptr_,read_cnt,rosfs_handler)
-        ):
-            _,image_data,_ = raw_image
-            _,pose_data,_ = raw_pose
-            with self._rwlatch_:
-                self._buffer_.append(
-                    (image_data,pose_data,self._deserialize_message(pose_data))
+
+        buffer = []
+        try:
+            for raw_image,raw_pose in zip(
+                read_by_id(self._image_,self._msgidxptr_,read_cnt,rosfs_handler),
+                read_by_id(self._pose_,self._msgidxptr_,read_cnt,rosfs_handler)
+            ):
+                _,image_data,_ = raw_image
+                _,pose_data,_ = raw_pose
+                if raw:
+                    buffer.append(
+                        (image_data,pose_data,self._deserialize_message(pose_data))
+                    )
+                else:
+                    buffer.append(
+                        (image_data,pose_data)
                 )
+        except Exception as e:
+            raise e
+            
             
         with self._rwlatch_:
+            if raw:
+                for image,pose,pose_obj in buffer:
+                    self._buffer_.append(
+                        (image,pose,pose_obj)
+                    )
+            else:
+                for image,pose in buffer:
+                    self._buffer_.append(
+                        (image,pose)
+                    )
             self._msgidxptr_ = self._msgidxptr_ + read_cnt - 1 + 1
         
-        print(f"reader daemon:{read_cnt} msgs")
+        print(f"[Reader Daemon]:read {read_cnt} msgs,Daemon Buffer size:{len(self._buffer_)}")
     
     def _reader_daemon(self):
-        while True:
-            self._start_reading()
-            time.sleep(1)
+        while not self._server_closed_:
+            try:
+                self._start_reading()
+            except Exception as e:
+                ...
+            finally:
+                time.sleep(1)
     
     def _spatial_search(self,pose_lb,pose_ub):
         with self._rwlatch_:
@@ -113,6 +140,7 @@ class Server:
             except Exception as e:
                 print(f"Error {e} happened while server responsing")
             if cmd==b'kill':
+                print(f"[ROS INFO]: receive command kill")
                 self.close_session()
                 break
             pose_lb,pose_ub = pickle.loads(raw_pose_lb),pickle.loads(raw_pose_ub)
@@ -129,6 +157,7 @@ class Server:
     def close_session(self):
         self._zmqsocket_.close()
         self._zmqcontext_.destroy()
+        self._server_closed_ = True
         
 if __name__ == "__main__":
     ip2port = {

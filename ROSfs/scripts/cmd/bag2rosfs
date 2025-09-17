@@ -1,1 +1,0 @@
-python3 bag2rosfs.py ./target/ga.bag ./target/ga_container.bag

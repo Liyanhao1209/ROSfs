@@ -42,6 +42,8 @@ class ROSfsCmds(UserDict):
 
         cmd = argv[0]
         if cmd in self:
+            
+            
             self[cmd](['-h'])
         else:
             print("Unknown command: '%s'" % cmd, file=sys.stderr)

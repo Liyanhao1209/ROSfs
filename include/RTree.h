@@ -29,16 +29,16 @@ namespace SpatialStorage {
         comprise
     };
 
-    template<typename KeyT>
+    template<typename KeyT, typename ValueT>
     class Context {
         public:
-            std::deque<std::pair<NodeHandler<KeyT>*,uint64_t>> path;
+            std::deque<std::pair<NodeHandler<KeyT, ValueT>*,uint64_t>> path;
     };
 
-    template<typename KeyT>
+    template<typename KeyT, typename ValueT>
     class RTree {
         public:
-            static RTree<KeyT> create(
+            static RTree<KeyT, ValueT> create(
                 int dir,
                 const char *name,
                 uint64_t key_size,
@@ -49,13 +49,13 @@ namespace SpatialStorage {
                 int index = openat(dir, name, O_RDWR | O_CREAT | O_EXCL,
                     S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);  
                 if (index == -1)
-                    return RTree<KeyT>{index,key_size,value_size,block_size,dimensions};
+                    return RTree<KeyT, ValueT>{index,key_size,value_size,block_size,dimensions};
                 if (ftruncate(index, block_size) == -1) {
                     close(index);
-                    return RTree<KeyT>{index,key_size,value_size,block_size,dimensions};
+                    return RTree<KeyT, ValueT>{index,key_size,value_size,block_size,dimensions};
                 }
 
-                RTree<KeyT> ret{index,key_size,value_size,block_size,dimensions};
+                RTree<KeyT, ValueT> ret{index,key_size,value_size,block_size,dimensions};
 
                 if (ret.get_fd() != -1) {
                     *ret.get_header() = IndexHeader {
@@ -70,7 +70,7 @@ namespace SpatialStorage {
                 return ret;
             }
 
-            static RTree<KeyT> open(
+            static RTree<KeyT, ValueT> open(
                 int dir,
                 const char *name,
                 uint64_t key_size,
@@ -80,9 +80,9 @@ namespace SpatialStorage {
             {
                 int index = openat(dir, name, O_RDWR);
                 if (index == -1)
-                    return RTree<KeyT>{index,key_size,value_size,block_size,dimensions};
+                    return RTree<KeyT, ValueT>{index,key_size,value_size,block_size,dimensions};
                 
-                RTree<KeyT> ret{index,key_size,value_size,block_size,dimensions};
+                RTree<KeyT, ValueT> ret{index,key_size,value_size,block_size,dimensions};
                 if (ret.get_fd() != -1) {
                     auto header = ret.get_header();
 
@@ -92,7 +92,7 @@ namespace SpatialStorage {
                         header->block_size != block_size ||
                         header->Dimensions != dimensions
                     )
-                        return RTree<KeyT>{index,key_size,value_size,block_size,dimensions};
+                        return RTree<KeyT, ValueT>{index,key_size,value_size,block_size,dimensions};
                 }
 
                 return ret;
@@ -118,22 +118,23 @@ namespace SpatialStorage {
                 assert(block_size>0 && block_size % PAGE_UNIT == 0);
             }
 
-            void collect_leaf_entries(NodeHandler<KeyT>* handler, 
-                             std::vector<KeyValuePair<KeyType<KeyT>>>& entries) {
+            void collect_leaf_entries(NodeHandler<KeyT, ValueT>* handler, 
+                             std::vector<KeyValuePair<KeyType<KeyT>, ValueT>>& entries) {
                 if (handler->IsLeafBlock()) {
                     for (uint64_t i = 0; i < handler->get_count(); ++i) {
                         entries.push_back(handler->get_elem_pair(i));
                     }
                 } else {
                     for (uint64_t i = 0; i < handler->get_count(); ++i) {
-                        auto child_addr = *reinterpret_cast<uint64_t*>(handler->get_elem_value(i));
+                        auto child_value = handler->get_elem_value(i);
+                        auto child_addr = *reinterpret_cast<const uint64_t*>(&child_value);
                         auto child_handler = get_node_handler(child_addr);
                         collect_leaf_entries(&child_handler, entries);
                     }
                 }
             }
 
-            void print_node_recursive(NodeHandler<KeyT>* handler, int depth) {
+            void print_node_recursive(NodeHandler<KeyT, ValueT>* handler, int depth) {
                 std::string indent(depth * 2, ' ');
                 
                 std::cout << indent;
@@ -162,7 +163,8 @@ namespace SpatialStorage {
                         std::cout << entry_indent << "Entry " << i << ": MBR";
                         print_mbr_simple(key);
                         
-                        auto child_addr = *reinterpret_cast<uint64_t*>(handler->get_elem_value(i));
+                        auto child_value = handler->get_elem_value(i);
+                        auto child_addr = *reinterpret_cast<const uint64_t*>(&child_value);
                         std::cout << " -> Child[0x" << std::hex << child_addr << std::dec << "]" << std::endl;
                         
                         auto child_handler = get_node_handler(child_addr);
@@ -173,14 +175,14 @@ namespace SpatialStorage {
                         std::cout << entry_indent << "KV " << i << ": MBR";
                         print_mbr_simple(key);
                         
-                        auto value_ptr = handler->get_elem_value(i);
+                        auto value = handler->get_elem_value(i);
                         if (value_size_ > 0) {
                             std::cout << " -> Value[";
                             if (value_size_ == sizeof(uint64_t)) {
-                                uint64_t value = *reinterpret_cast<const uint64_t*>(value_ptr);
-                                std::cout << value;
+                                uint64_t value_data = *reinterpret_cast<const uint64_t*>(&value);
+                                std::cout << value_data;
                             } else {
-                                std::cout << "0x" << std::hex << reinterpret_cast<uint64_t>(value_ptr) << std::dec;
+                                std::cout << "0x" << std::hex << reinterpret_cast<uint64_t>(&value) << std::dec;
                             }
                             std::cout << "]";
                         }
@@ -223,10 +225,10 @@ namespace SpatialStorage {
                 return index_header->root_addr;
             }
 
-            NodeHandler<KeyT> get_node_handler(uint64_t address) {
+            NodeHandler<KeyT, ValueT> get_node_handler(uint64_t address) {
                 NodeHeader *header = get_address<NodeHeader>(address);
 
-                return NodeHandler<KeyT>{header,key_size_,header->IsLeafBlock()?value_size_:sizeof(uint64_t),block_size_,dimensions_};
+                return NodeHandler<KeyT, ValueT>{header, key_size_, header->IsLeafBlock() ? value_size_ : sizeof(uint64_t), block_size_, dimensions_};
             }
 
             // Allocate one new block.
@@ -240,45 +242,44 @@ namespace SpatialStorage {
             
             void search(
                 const KeyType<KeyT>& key,
-                NodeHandler<KeyT> *handler,
-                std::vector<KeyValuePair<KeyType<KeyT>>> *res,
+                NodeHandler<KeyT, ValueT> *handler,
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> *res,
                 SearchMode mode) 
             {
                 auto entry_cnt = handler->get_count();
-                    for(uint64_t i=0;i<entry_cnt;i++){
-                        auto mbr = handler->get_elem_key(i);
-                        if (handler->IsLeafBlock()){
-                            if (
+                for(uint64_t i=0;i<entry_cnt;i++){
+                    auto mbr = handler->get_elem_key(i);
+                    if (handler->IsLeafBlock()){
+                        if (
+                        (mode==SearchMode::overlap && mbr.IsOverlap(key)) ||
+                        (mode==SearchMode::comprise && key>=mbr)
+                        ) {
+                            KeyValuePair<KeyType<KeyT>, ValueT> kvp = handler->get_elem_pair(i);
+                            res->push_back(kvp);
+                        }
+                    }
+                    else{
+                        if (
                             (mode==SearchMode::overlap && mbr.IsOverlap(key)) ||
                             (mode==SearchMode::comprise && key>=mbr)
-                            ) {
-                                KeyValuePair<KeyType<KeyT>> kvp = handler->get_elem_pair(i);
-                                res->push_back(kvp);
-                            }
+                        ) {
+                            auto child_value = handler->get_elem_value(i);
+                            auto next_addr = *reinterpret_cast<const uint64_t*>(&child_value);
+                            auto next_handler = get_node_handler(next_addr);
+                            search(key,&next_handler,res,mode);
                         }
-                        else{
-                            if (
-                                (mode==SearchMode::overlap && mbr.IsOverlap(key)) ||
-                                (mode==SearchMode::comprise && key>=mbr)
-                            ) {
-                                auto next_addr = *reinterpret_cast<uint64_t *>(handler->get_elem_value(i));
-                                auto next_handler = get_node_handler(next_addr);
-                                search(key,&next_handler,res,mode);
-                            }
-                        }
-                        
                     }
+                    
+                }
             }
 
-            NodeHandler<KeyT> *ChooseLeaf(
+            NodeHandler<KeyT, ValueT> *ChooseLeaf(
                 const KeyType<KeyT>& key,
-                NodeHandler<KeyT>* handler,
-                Context<KeyT>* ctx
+                NodeHandler<KeyT, ValueT>* handler,
+                Context<KeyT, ValueT>* ctx
             ) {
-                
-
                 if (handler->IsLeafBlock()) {
-                    std::pair<NodeHandler<KeyT>*,uint64_t> pth(handler,0);
+                    std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> pth(handler,0);
                     ctx->path.push_back(pth);
                     return handler;
                 }
@@ -296,23 +297,24 @@ namespace SpatialStorage {
                     }
                 }
                 
-                std::pair<NodeHandler<KeyT>*,uint64_t> pth(handler,min_enlarge_index);
+                std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> pth(handler,min_enlarge_index);
                 ctx->path.push_back(pth);
-                auto next_addr = *reinterpret_cast<uint64_t *>(handler->get_elem_value(min_enlarge_index));
+                auto child_value = handler->get_elem_value(min_enlarge_index);
+                auto next_addr = *reinterpret_cast<const uint64_t*>(&child_value);
                 auto next_handler = get_node_handler(next_addr);
 
                 return ChooseLeaf(key,&next_handler,ctx);
             }
 
-            NodeHandler<KeyT> *FindLeaf(
-                Context<KeyT> *ctx,
-                NodeHandler<KeyT> * cur_handler,
+            NodeHandler<KeyT, ValueT> *FindLeaf(
+                Context<KeyT, ValueT> *ctx,
+                NodeHandler<KeyT, ValueT> * cur_handler,
                 KeyType<KeyT> *key
             ) {
                 if (cur_handler->IsLeafBlock()) {
                     for(uint64_t i=0;i<cur_handler->get_count();i++){
                         if(*key==cur_handler->get_elem_key(i)){
-                            std::pair<NodeHandler<KeyT>*,uint64_t> pth(cur_handler,i);
+                            std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> pth(cur_handler,i);
                             ctx->path.push_back(pth);
                             return cur_handler;
                         }
@@ -322,9 +324,10 @@ namespace SpatialStorage {
 
                 for (uint64_t i=0;i<cur_handler->get_count();i++){
                     if(*key>=cur_handler->get_elem_key(i)){
-                        uint64_t next_addr = *reinterpret_cast<uint64_t *>(cur_handler->get_elem_value(i));
-                        NodeHandler<KeyT> next_node = get_node_handler(next_addr);
-                        std::pair<NodeHandler<KeyT>*,uint64_t> pth(cur_handler,i);
+                        auto child_value = cur_handler->get_elem_value(i);
+                        uint64_t next_addr = *reinterpret_cast<const uint64_t*>(&child_value);
+                        NodeHandler<KeyT, ValueT> next_node = get_node_handler(next_addr);
+                        std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> pth(cur_handler,i);
                         ctx->path.push_back(pth);
                         auto res = FindLeaf(ctx,&next_node,key);
                         if(res==nullptr){
@@ -340,14 +343,14 @@ namespace SpatialStorage {
             }
             
             void modify_parent_entry_mbr(
-                Context<KeyT> *ctx,
+                Context<KeyT, ValueT> *ctx,
                 KeyType<KeyT>* modify_key = nullptr
             ) {
                 if (ctx->path.empty()){
                     return;
                 }
-                std::pair<NodeHandler<KeyT>*,uint64_t> handler_entry = ctx->path.back();
-                NodeHandler<KeyT> *cur_handler = handler_entry.first;
+                std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> handler_entry = ctx->path.back();
+                NodeHandler<KeyT, ValueT> *cur_handler = handler_entry.first;
                 uint64_t parent_entry_id = handler_entry.second;
                 ctx->path.pop_back();
 
@@ -362,7 +365,7 @@ namespace SpatialStorage {
                 }
             }
 
-            KeyType<KeyT> get_node_mbr(NodeHandler<KeyT>* handler) {
+            KeyType<KeyT> get_node_mbr(NodeHandler<KeyT, ValueT>* handler) {
                 auto first_key = handler->get_elem_key(0);
                 KeyType<KeyT> mbr(first_key);
 
@@ -374,12 +377,12 @@ namespace SpatialStorage {
             }
 
             void split(
-                Context<KeyT> *ctx,
-                KeyValuePair<KeyType<KeyT>>& insert_kvp,
+                Context<KeyT, ValueT> *ctx,
+                KeyValuePair<KeyType<KeyT>, ValueT>& insert_kvp,
                 KeyType<KeyT>* modify_key = nullptr
             ) {
-                std::pair<NodeHandler<KeyT>*,uint64_t> handler_entry = ctx->path.back();
-                NodeHandler<KeyT> *cur_handler = handler_entry.first;
+                std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> handler_entry = ctx->path.back();
+                NodeHandler<KeyT, ValueT> *cur_handler = handler_entry.first;
                 uint64_t parent_entry_id = handler_entry.second;
                 ctx->path.pop_back();
 
@@ -412,7 +415,7 @@ namespace SpatialStorage {
                 auto seeds = pickseed(cur_handler, insert_kvp);
                 auto& partition1 = seeds.first;  
                 auto& partition2 = seeds.second;
-                NodeHandler<KeyT> new_node_handler = get_node_handler(new_addr);
+                NodeHandler<KeyT, ValueT> new_node_handler = get_node_handler(new_addr);
 
                 // reinsert the original node and maintain the modified mbr
                 cur_handler->clear();
@@ -434,11 +437,11 @@ namespace SpatialStorage {
                     NodeHeader *new_root_header = get_address<NodeHeader>(new_root_addr);
                     *new_root_header = NodeHeader{BlockType::InnerBlock,0,new_root_addr};
 
-                    NodeHandler<KeyT> root_handler = get_node_handler(new_root_addr);
+                    NodeHandler<KeyT, ValueT> root_handler = get_node_handler(new_root_addr);
                     auto cur_in_file_addr = cur_handler->get_in_file_addr();
                     
-                    KeyValuePair<KeyType<KeyT>> kvp2{*mbr1,&new_addr};
-                    KeyValuePair<KeyType<KeyT>> kvp1{*mbr2,&cur_in_file_addr};
+                    KeyValuePair<KeyType<KeyT>, ValueT> kvp2{*mbr1, new_addr};
+                    KeyValuePair<KeyType<KeyT>, ValueT> kvp1{*mbr2, cur_in_file_addr};
 
                     root_handler.insert(kvp1);
                     root_handler.insert(kvp2);
@@ -450,16 +453,16 @@ namespace SpatialStorage {
 
                 // traceback and adjust the tree
                 // insert the new mbr entry and modify the parent mbr entry
-                KeyValuePair<KeyType<KeyT>> kvp{*mbr1,&new_addr};
+                KeyValuePair<KeyType<KeyT>, ValueT> kvp{*mbr1, new_addr};
                 split(ctx,kvp,mbr2);
             }
 
             std::pair<
-                std::vector<KeyValuePair<KeyType<KeyT>>>, 
-                std::vector<KeyValuePair<KeyType<KeyT>>> 
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>>, 
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> 
             >
-            pickseed(NodeHandler<KeyT> *handler, KeyValuePair<KeyType<KeyT>>& kvp) {
-                std::vector<KeyValuePair<KeyType<KeyT>>> whole;
+            pickseed(NodeHandler<KeyT, ValueT> *handler, KeyValuePair<KeyType<KeyT>, ValueT>& kvp) {
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> whole;
                 auto entry_count = handler->get_count();
 
                 for(uint64_t i = 0; i < entry_count; i++) {
@@ -488,8 +491,8 @@ namespace SpatialStorage {
                     }
                 }
 
-                std::vector<KeyValuePair<KeyType<KeyT>>> res1;
-                std::vector<KeyValuePair<KeyType<KeyT>>> res2;
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> res1;
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> res2;
 
                 res1.push_back(whole[partition1]);
                 res2.push_back(whole[partition2]);
@@ -533,66 +536,57 @@ namespace SpatialStorage {
 
 
         public:
-            std::vector<KeyValuePair<KeyType<KeyT>>> Overlap_Search(const KeyType<KeyT>& key){
+            std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> Overlap_Search(const KeyType<KeyT>& key){
                 assert(key.size()/2==this->dimensions_);
-                std::vector<KeyValuePair<KeyType<KeyT>>> res;
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> res;
                 auto root_handler = get_node_handler(get_root_addr());
                 search(key,&root_handler,&res,SearchMode::overlap);
 
                 return res;
             }
 
-            std::vector<KeyValuePair<KeyType<KeyT>>> Comprise_Search(const KeyType<KeyT>& key){
+            std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> Comprise_Search(const KeyType<KeyT>& key){
                 assert(key.size()/2==this->dimensions_);
-                std::vector<KeyValuePair<KeyType<KeyT>>> res;
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> res;
                 auto root_handler = get_node_handler(get_root_addr());
                 search(key,&root_handler,&res,SearchMode::comprise);
 
                 return res;
             }
 
-            void Insert(KeyValuePair<KeyType<KeyT>>& kvp) {
+            void Insert(KeyValuePair<KeyType<KeyT>, ValueT>& kvp) {
                 auto root_addr = get_root_addr();
                 // empty tree
                 if (root_addr == INVALID_ROOT_ADDR) {
-                    /**
-                     * allocate a new lbock
-                     * set the IndexHeader's root_addr to the new addr
-                     * init a Node Header,set its metadata
-                     * set the node header
-                     * insert the k/v pair
-                     */
                     uint64_t new_addr = allocate_block();
                     get_header()->root_addr = new_addr;
 
                     NodeHeader root_header = NodeHeader{BlockType::LeafBlock,0,new_addr};
                     NodeHeader *header = get_address<NodeHeader>(new_addr);
                     *header = root_header;
-                    // root_handler.set_header(&root_header);
 
-                    NodeHandler<KeyT> root_handler = get_node_handler(new_addr);
+                    NodeHandler<KeyT, ValueT> root_handler = get_node_handler(new_addr);
                     root_handler.insert(kvp);
                     return;
                 }
                 
-                Context<KeyT> ctx;
+                Context<KeyT, ValueT> ctx;
                 auto root_handler = get_node_handler(root_addr);
                 ChooseLeaf(kvp.key,&root_handler,&ctx);
                 
                 split(&ctx,kvp);
             }
 
-
-            bool Delete(KeyValuePair<KeyType<KeyT>>& kvp) {
-                Context<KeyT> ctx;
+            bool Delete(KeyValuePair<KeyType<KeyT>, ValueT>& kvp) {
+                Context<KeyT, ValueT> ctx;
                 auto root_handler = get_node_handler(get_root_addr());
-                NodeHandler<KeyT> *target_leaf = FindLeaf(&ctx,&root_handler,&kvp.key);
+                NodeHandler<KeyT, ValueT> *target_leaf = FindLeaf(&ctx,&root_handler,&kvp.key);
 
                 if (target_leaf==nullptr){
                     return false;
                 }
 
-                std::pair<NodeHandler<KeyT>*,uint64_t> handler_entry = ctx.path.back();
+                std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> handler_entry = ctx.path.back();
                 uint64_t parent_entry_id = handler_entry.second;
                 target_leaf->delete_elem_key(parent_entry_id);
 
@@ -614,8 +608,8 @@ namespace SpatialStorage {
                 print_node_recursive(&root_handler, 0);
             }
 
-            std::vector<KeyValuePair<KeyType<KeyT>>> GetAllEntries() {
-                std::vector<KeyValuePair<KeyType<KeyT>>> all_entries;
+            std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> GetAllEntries() {
+                std::vector<KeyValuePair<KeyType<KeyT>, ValueT>> all_entries;
                 auto root_addr = get_root_addr();
                 
                 if (root_addr == INVALID_ROOT_ADDR) {

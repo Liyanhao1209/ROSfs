@@ -163,8 +163,8 @@ std::vector<TestData> read_test_data_from_file(const std::string& filename, int 
 
 bool compare_results(
     const std::vector<std::pair<KeyType<double>, uint64_t>>& brute_force_result,
-    const std::vector<KeyValuePair<KeyType<double>>>& rtree_result,
-    const std::string& operation_info = "")  // 添加操作信息参数
+    const std::vector<KeyValuePair<KeyType<double>, uint64_t>>& rtree_result,
+    const std::string& operation_info = "")
 {
     if (brute_force_result.size() != rtree_result.size()) {
         std::cout << "\n=== 结果不一致 ===" << std::endl;
@@ -194,7 +194,7 @@ bool compare_results(
                 std::cout << "(" << data[j] << "," << data[j + data.size()/2] << ")";
                 if (j < data.size()/2 - 1) std::cout << " ";
             }
-            std::cout << "] value=" << *reinterpret_cast<const uint64_t*>(rtree_result[i].value) << std::endl;
+            std::cout << "] value=" << rtree_result[i].value << std::endl;
         }
         
         // 找出缺失的条目
@@ -204,7 +204,7 @@ bool compare_results(
                 bool found = false;
                 for (const auto& rt_item : rtree_result) {
                     if (bf_item.first == rt_item.key && 
-                        bf_item.second == *reinterpret_cast<const uint64_t*>(rt_item.value)) {
+                        bf_item.second == rt_item.value) {
                         found = true;
                         break;
                     }
@@ -225,7 +225,7 @@ bool compare_results(
     }
     
     std::vector<std::pair<KeyType<double>, uint64_t>> bf_sorted = brute_force_result;
-    std::vector<KeyValuePair<KeyType<double>>> rt_sorted = rtree_result;
+    std::vector<KeyValuePair<KeyType<double>, uint64_t>> rt_sorted = rtree_result;
     
     auto key_to_string = [](const KeyType<double>& key) {
         std::string result;
@@ -244,14 +244,14 @@ bool compare_results(
               });
     
     std::sort(rt_sorted.begin(), rt_sorted.end(), 
-              [&](const KeyValuePair<KeyType<double>>& a,  
-                  const KeyValuePair<KeyType<double>>& b) { 
+              [&](const KeyValuePair<KeyType<double>, uint64_t>& a,  
+                  const KeyValuePair<KeyType<double>, uint64_t>& b) { 
                   return key_to_string(a.key) < key_to_string(b.key); 
               });
     
     for (size_t i = 0; i < bf_sorted.size(); ++i) {
         bool key_mismatch = (bf_sorted[i].first != rt_sorted[i].key);
-        bool value_mismatch = (bf_sorted[i].second != *reinterpret_cast<const uint64_t*>(rt_sorted[i].value));
+        bool value_mismatch = (bf_sorted[i].second != rt_sorted[i].value);
         
         if (key_mismatch || value_mismatch) {
             std::cout << "\n=== 结果不一致 ===" << std::endl;
@@ -277,7 +277,7 @@ bool compare_results(
                 if (j < rt_data.size()/2 - 1) std::cout << " ";
             }
             std::cout << "]" << std::endl;
-            std::cout << "  Value: " << *reinterpret_cast<const uint64_t*>(rt_sorted[i].value) << std::endl;
+            std::cout << "  Value: " << rt_sorted[i].value << std::endl;
             
             if (key_mismatch) {
                 std::cout << "错误类型: Key不匹配" << std::endl;
@@ -292,50 +292,6 @@ bool compare_results(
     
     return true;
 }
-
-// bool compare_results(
-//     const std::vector<std::pair<KeyType<double>, uint64_t>>& brute_force_result,
-//     const std::vector<KeyValuePair<KeyType<double>>>& rtree_result)  // 去掉 *
-// {
-//     if (brute_force_result.size() != rtree_result.size()) {
-//         return false;
-//     }
-    
-//     std::vector<std::pair<KeyType<double>, uint64_t>> bf_sorted = brute_force_result;
-//     std::vector<KeyValuePair<KeyType<double>>> rt_sorted = rtree_result;  // 去掉 *
-    
-//     auto key_to_string = [](const KeyType<double>& key) {
-//         std::string result;
-//         const auto& data = key.getData();
-//         for (const auto& val : data) {
-//             result += std::to_string(val) + ",";
-//         }
-//         return result;
-//     };
-    
-//     std::sort(bf_sorted.begin(), bf_sorted.end(), 
-//               [&](const std::pair<KeyType<double>, uint64_t>& a, 
-//                   const std::pair<KeyType<double>, uint64_t>& b) { 
-//                   return key_to_string(a.first) < key_to_string(b.first); 
-//               });
-    
-//     std::sort(rt_sorted.begin(), rt_sorted.end(), 
-//               [&](const KeyValuePair<KeyType<double>>& a,  
-//                   const KeyValuePair<KeyType<double>>& b) { 
-//                   return key_to_string(a.key) < key_to_string(b.key); 
-//               });
-    
-//     for (size_t i = 0; i < bf_sorted.size(); ++i) {
-//         if (bf_sorted[i].first != rt_sorted[i].key) {  
-//             return false;
-//         }
-//         if (bf_sorted[i].second != *reinterpret_cast<const uint64_t*>(rt_sorted[i].value)) {  
-//             return false;
-//         }
-//     }
-    
-//     return true;
-// }
 
 void run_test(const TestConfig& config) {
     std::cout << "=== R树测试开始 ===" << std::endl;
@@ -357,7 +313,7 @@ void run_test(const TestConfig& config) {
     }
     
     std::cout << "初始化对拍..." << std::endl;
-    auto rtree = RTree<double>::create(AT_FDCWD, "test_rtree.index", 
+    auto rtree = RTree<double, uint64_t>::create(AT_FDCWD, "test_rtree.index", 
                                       config.key_size, config.value_size,
                                       config.block_size, config.dimensions);
     
@@ -385,7 +341,7 @@ void run_test(const TestConfig& config) {
                 std::cout << "value=" << data.value;
                 
                 auto start = std::chrono::high_resolution_clock::now();
-                KeyValuePair<KeyType<double>> kvp{data.key, reinterpret_cast<const void*>(&data.value)};
+                KeyValuePair<KeyType<double>, uint64_t> kvp{data.key, data.value};
                 rtree.Insert(kvp);
                 auto end = std::chrono::high_resolution_clock::now();
                 double rtree_time = std::chrono::duration<double, std::milli>(end - start).count();
@@ -410,7 +366,7 @@ void run_test(const TestConfig& config) {
                 }
                 
                 auto start = std::chrono::high_resolution_clock::now();
-                KeyValuePair<KeyType<double>> kvp{data.key, nullptr};
+                KeyValuePair<KeyType<double>, uint64_t> kvp{data.key, 0};
                 bool rtree_result = rtree.Delete(kvp);
                 auto end = std::chrono::high_resolution_clock::now();
                 double rtree_time = std::chrono::duration<double, std::milli>(end - start).count();
@@ -509,10 +465,6 @@ void run_test(const TestConfig& config) {
     std::cout << "成功操作: " << success_count << std::endl;
     std::cout << "成功率: " << (success_count * 100.0 / total_operations) << "%" << std::endl;
     std::cout << "R树总时间: " << total_rtree_time << "ms" << std::endl;
-    // std::cout << "暴力搜索总时间: " << total_brute_force_time << "ms" << std::endl;
-    // if (total_rtree_time > 0) {
-    //     std::cout << "加速比: " << (total_brute_force_time / total_rtree_time) << "x" << std::endl;
-    // }
     std::cout << "最终数据量: " << brute_force.size() << " 个条目" << std::endl;
 
     if (unlink("test_rtree.index") == 0) {

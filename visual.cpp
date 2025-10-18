@@ -19,7 +19,6 @@ enum class OperationType {
     COMPRISE_SEARCH
 };
 
-
 struct Operation {
     OperationType type;
     std::vector<double> key_data;  
@@ -59,7 +58,6 @@ std::vector<Operation> read_operations(const std::string& filename) {
         
         uint64_t value = 0;
         if (op_type == OperationType::INSERT && key_data.size() >= 4) {
-
             value = static_cast<uint64_t>(key_data.back());
             key_data.pop_back();
         }
@@ -72,14 +70,13 @@ std::vector<Operation> read_operations(const std::string& filename) {
     return operations;
 }
 
-
 class RTreeVisualizer {
 private:
     sf::RenderWindow window;
     std::vector<Operation> operations;
     size_t current_op_index;
-    RTree<double> rtree;
-    std::vector<KeyValuePair<KeyType<double>>> current_search_results;
+    RTree<double, uint64_t> rtree;
+    std::vector<KeyValuePair<KeyType<double>, uint64_t>> current_search_results;
     KeyType<double> current_search_range;
     bool has_search;
     
@@ -89,7 +86,6 @@ private:
     const sf::Color SEARCH_RANGE_COLOR = sf::Color(255, 165, 0, 128); 
     const sf::Color TEXT_COLOR = sf::Color::Black;
     
-
     const float PADDING = 50.0f;
     const float WORLD_SIZE = 100.0f;  
     
@@ -98,7 +94,7 @@ public:
         : window(sf::VideoMode(1200, 800), "R-Tree Visual Demo"),
           operations(read_operations(op_file)),
           current_op_index(0),
-          rtree(RTree<double>::create(AT_FDCWD, "visual_demo.index", 
+          rtree(RTree<double, uint64_t>::create(AT_FDCWD, "visual_demo.index", 
                                     4 * sizeof(double), sizeof(uint64_t), 
                                     4096, 2)),
           has_search(false)
@@ -157,8 +153,7 @@ private:
                 }
                 std::cout << "], value=" << op.value << std::endl;
                 
-                KeyValuePair<KeyType<double>> kvp{KeyType<double>(op.key_data), 
-                                                 reinterpret_cast<const void*>(&op.value)};
+                KeyValuePair<KeyType<double>, uint64_t> kvp{KeyType<double>(op.key_data), op.value};
                 rtree.Insert(kvp);
                 break;
             }
@@ -171,7 +166,7 @@ private:
                 }
                 std::cout << "]" << std::endl;
                 
-                KeyValuePair<KeyType<double>> kvp{KeyType<double>(op.key_data), nullptr};
+                KeyValuePair<KeyType<double>, uint64_t> kvp{KeyType<double>(op.key_data), 0};
                 rtree.Delete(kvp);
                 break;
             }
@@ -262,7 +257,6 @@ private:
             drawMBR(entry.key, MBR_COLOR, false);
         }
     }
-
     
     void drawSearchResults() {
         for (const auto& result : current_search_results) {
@@ -285,17 +279,18 @@ private:
         rect.setOutlineThickness(is_search_result ? 3 : 2);
         
         window.draw(rect);
-        
-        if (is_search_result) {
-        }
     }
     
     void drawStatusInfo() {
+        // 简单的文本状态显示
         sf::Font font;
+        // 这里可以添加字体加载和文本绘制代码
+        // 由于字体文件可能不存在，这里省略具体实现
         
         std::string status = "操作: " + std::to_string(current_op_index) + "/" + 
                            std::to_string(operations.size()) + 
                            " (按Enter继续, ESC退出)";
+        // 在实际使用时可以添加文本绘制代码
     }
 };
 

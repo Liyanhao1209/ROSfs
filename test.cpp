@@ -163,20 +163,76 @@ std::vector<TestData> read_test_data_from_file(const std::string& filename, int 
 
 bool compare_results(
     const std::vector<std::pair<KeyType<double>, uint64_t>>& brute_force_result,
-    const std::vector<KeyValuePair<KeyType<double>>>& rtree_result)  // 去掉 *
+    const std::vector<KeyValuePair<KeyType<double>>>& rtree_result,
+    const std::string& operation_info = "")  // 添加操作信息参数
 {
     if (brute_force_result.size() != rtree_result.size()) {
+        std::cout << "\n=== 结果不一致 ===" << std::endl;
+        std::cout << "暴力搜索找到 " << brute_force_result.size() << " 个结果" << std::endl;
+        std::cout << "R树搜索找到 " << rtree_result.size() << " 个结果" << std::endl;
+        
+        // 打印暴力搜索的所有结果
+        std::cout << "\n暴力搜索结果:" << std::endl;
+        for (size_t i = 0; i < brute_force_result.size(); ++i) {
+            const auto& key = brute_force_result[i].first;
+            const auto& data = key.getData();
+            std::cout << "  " << i << ": [";
+            for (size_t j = 0; j < data.size() / 2; ++j) {
+                std::cout << "(" << data[j] << "," << data[j + data.size()/2] << ")";
+                if (j < data.size()/2 - 1) std::cout << " ";
+            }
+            std::cout << "] value=" << brute_force_result[i].second << std::endl;
+        }
+        
+        // 打印R树搜索的所有结果
+        std::cout << "\nR树搜索结果:" << std::endl;
+        for (size_t i = 0; i < rtree_result.size(); ++i) {
+            const auto& key = rtree_result[i].key;
+            const auto& data = key.getData();
+            std::cout << "  " << i << ": [";
+            for (size_t j = 0; j < data.size() / 2; ++j) {
+                std::cout << "(" << data[j] << "," << data[j + data.size()/2] << ")";
+                if (j < data.size()/2 - 1) std::cout << " ";
+            }
+            std::cout << "] value=" << *reinterpret_cast<const uint64_t*>(rtree_result[i].value) << std::endl;
+        }
+        
+        // 找出缺失的条目
+        if (brute_force_result.size() > rtree_result.size()) {
+            std::cout << "\nR树缺失的条目:" << std::endl;
+            for (const auto& bf_item : brute_force_result) {
+                bool found = false;
+                for (const auto& rt_item : rtree_result) {
+                    if (bf_item.first == rt_item.key && 
+                        bf_item.second == *reinterpret_cast<const uint64_t*>(rt_item.value)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    const auto& data = bf_item.first.getData();
+                    std::cout << "  [";
+                    for (size_t j = 0; j < data.size() / 2; ++j) {
+                        std::cout << "(" << data[j] << "," << data[j + data.size()/2] << ")";
+                        if (j < data.size()/2 - 1) std::cout << " ";
+                    }
+                    std::cout << "] value=" << bf_item.second << std::endl;
+                }
+            }
+        }
+        
         return false;
     }
     
     std::vector<std::pair<KeyType<double>, uint64_t>> bf_sorted = brute_force_result;
-    std::vector<KeyValuePair<KeyType<double>>> rt_sorted = rtree_result;  // 去掉 *
+    std::vector<KeyValuePair<KeyType<double>>> rt_sorted = rtree_result;
     
     auto key_to_string = [](const KeyType<double>& key) {
         std::string result;
         const auto& data = key.getData();
-        for (const auto& val : data) {
-            result += std::to_string(val) + ",";
+        for (size_t i = 0; i < data.size() / 2; ++i) {
+            result += "(" + std::to_string(data[i]) + "," + std::to_string(data[i + data.size()/2]) + ")";
+            if (i < data.size()/2 - 1) result += " ";
         }
         return result;
     };
@@ -194,16 +250,92 @@ bool compare_results(
               });
     
     for (size_t i = 0; i < bf_sorted.size(); ++i) {
-        if (bf_sorted[i].first != rt_sorted[i].key) {  
-            return false;
-        }
-        if (bf_sorted[i].second != *reinterpret_cast<const uint64_t*>(rt_sorted[i].value)) {  
+        bool key_mismatch = (bf_sorted[i].first != rt_sorted[i].key);
+        bool value_mismatch = (bf_sorted[i].second != *reinterpret_cast<const uint64_t*>(rt_sorted[i].value));
+        
+        if (key_mismatch || value_mismatch) {
+            std::cout << "\n=== 结果不一致 ===" << std::endl;
+            std::cout << "在第 " << i << " 个结果处不匹配:" << std::endl;
+            
+            std::cout << "暴力搜索结果:" << std::endl;
+            const auto& bf_key = bf_sorted[i].first;
+            const auto& bf_data = bf_key.getData();
+            std::cout << "  Key: [";
+            for (size_t j = 0; j < bf_data.size() / 2; ++j) {
+                std::cout << "(" << bf_data[j] << "," << bf_data[j + bf_data.size()/2] << ")";
+                if (j < bf_data.size()/2 - 1) std::cout << " ";
+            }
+            std::cout << "]" << std::endl;
+            std::cout << "  Value: " << bf_sorted[i].second << std::endl;
+            
+            std::cout << "R树搜索结果:" << std::endl;
+            const auto& rt_key = rt_sorted[i].key;
+            const auto& rt_data = rt_key.getData();
+            std::cout << "  Key: [";
+            for (size_t j = 0; j < rt_data.size() / 2; ++j) {
+                std::cout << "(" << rt_data[j] << "," << rt_data[j + rt_data.size()/2] << ")";
+                if (j < rt_data.size()/2 - 1) std::cout << " ";
+            }
+            std::cout << "]" << std::endl;
+            std::cout << "  Value: " << *reinterpret_cast<const uint64_t*>(rt_sorted[i].value) << std::endl;
+            
+            if (key_mismatch) {
+                std::cout << "错误类型: Key不匹配" << std::endl;
+            }
+            if (value_mismatch) {
+                std::cout << "错误类型: Value不匹配" << std::endl;
+            }
+            
             return false;
         }
     }
     
     return true;
 }
+
+// bool compare_results(
+//     const std::vector<std::pair<KeyType<double>, uint64_t>>& brute_force_result,
+//     const std::vector<KeyValuePair<KeyType<double>>>& rtree_result)  // 去掉 *
+// {
+//     if (brute_force_result.size() != rtree_result.size()) {
+//         return false;
+//     }
+    
+//     std::vector<std::pair<KeyType<double>, uint64_t>> bf_sorted = brute_force_result;
+//     std::vector<KeyValuePair<KeyType<double>>> rt_sorted = rtree_result;  // 去掉 *
+    
+//     auto key_to_string = [](const KeyType<double>& key) {
+//         std::string result;
+//         const auto& data = key.getData();
+//         for (const auto& val : data) {
+//             result += std::to_string(val) + ",";
+//         }
+//         return result;
+//     };
+    
+//     std::sort(bf_sorted.begin(), bf_sorted.end(), 
+//               [&](const std::pair<KeyType<double>, uint64_t>& a, 
+//                   const std::pair<KeyType<double>, uint64_t>& b) { 
+//                   return key_to_string(a.first) < key_to_string(b.first); 
+//               });
+    
+//     std::sort(rt_sorted.begin(), rt_sorted.end(), 
+//               [&](const KeyValuePair<KeyType<double>>& a,  
+//                   const KeyValuePair<KeyType<double>>& b) { 
+//                   return key_to_string(a.key) < key_to_string(b.key); 
+//               });
+    
+//     for (size_t i = 0; i < bf_sorted.size(); ++i) {
+//         if (bf_sorted[i].first != rt_sorted[i].key) {  
+//             return false;
+//         }
+//         if (bf_sorted[i].second != *reinterpret_cast<const uint64_t*>(rt_sorted[i].value)) {  
+//             return false;
+//         }
+//     }
+    
+//     return true;
+// }
 
 void run_test(const TestConfig& config) {
     std::cout << "=== R树测试开始 ===" << std::endl;

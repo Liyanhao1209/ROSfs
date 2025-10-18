@@ -94,7 +94,7 @@ namespace SpatialStorage {
             {}
 
             NodeHeader *get_header() {return header_;}
-            void set_header(NodeHeader* header) {header_ = header;}
+            void set_header(NodeHeader* header) {*header_ = *header;}
 
             bool IsLeafBlock() { return header_->IsLeafBlock(); } 
             void SetBlockType(BlockType bt) {header_->SetBlockType(bt);}

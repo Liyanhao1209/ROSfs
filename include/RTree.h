@@ -414,40 +414,44 @@ namespace SpatialStorage {
                 auto& partition2 = seeds.second;
                 NodeHandler<KeyT> new_node_handler = get_node_handler(new_addr);
 
-                // insert k/v pair and maintain the mbr
-                KeyType<KeyT> mbr1(partition1[0].key);
-                for(uint64_t i =0;i<partition1.size();i++){
-                    new_node_handler.insert(partition1[i]);
-                    mbr1.mbr_enlarge(partition1[i].key);
-                }
-
                 // reinsert the original node and maintain the modified mbr
                 cur_handler->clear();
-                KeyType<KeyT> mbr2(partition2[0].key);
+                KeyType<KeyT> *mbr2 = new KeyType<KeyT>(partition2[0].key);
                 for(uint64_t i=0;i<partition2.size();i++) {
                     cur_handler->insert(partition2[i]);
-                    mbr2.mbr_enlarge(partition2[i].key);
+                    mbr2->mbr_enlarge(partition2[i].key);
                 }
-                
+
+                // insert k/v pair and maintain the mbr
+                KeyType<KeyT> *mbr1 = new KeyType<KeyT>(partition1[0].key);
+                for(uint64_t i =0;i<partition1.size();i++){
+                    new_node_handler.insert(partition1[i]);
+                    mbr1->mbr_enlarge(partition1[i].key);
+                }
+
                 if (cur_handler->get_in_file_addr()==get_root_addr()){
                     uint64_t new_root_addr = allocate_block();
-                    NodeHandler<KeyT> root_handler = get_node_handler(new_root_addr);
-                    NodeHeader root_header = NodeHeader{BlockType::InnerBlock,0,new_root_addr};
+                    NodeHeader *new_root_header = get_address<NodeHeader>(new_root_addr);
+                    *new_root_header = NodeHeader{BlockType::InnerBlock,0,new_root_addr};
 
-                    root_handler.set_header(&root_header);
+                    NodeHandler<KeyT> root_handler = get_node_handler(new_root_addr);
                     auto cur_in_file_addr = cur_handler->get_in_file_addr();
-                    KeyValuePair<KeyType<KeyT>> kvp1{mbr2,&cur_in_file_addr};
-                    KeyValuePair<KeyType<KeyT>> kvp2{mbr1,&new_addr};
+                    
+                    KeyValuePair<KeyType<KeyT>> kvp2{*mbr1,&new_addr};
+                    KeyValuePair<KeyType<KeyT>> kvp1{*mbr2,&cur_in_file_addr};
 
                     root_handler.insert(kvp1);
                     root_handler.insert(kvp2);
+
+                    get_header()->root_addr = new_root_addr;
+
                     return;
                 }
 
                 // traceback and adjust the tree
                 // insert the new mbr entry and modify the parent mbr entry
-                KeyValuePair<KeyType<KeyT>> kvp{mbr1,&new_addr};
-                split(ctx,kvp,&mbr2);
+                KeyValuePair<KeyType<KeyT>> kvp{*mbr1,&new_addr};
+                split(ctx,kvp,mbr2);
             }
 
             std::pair<

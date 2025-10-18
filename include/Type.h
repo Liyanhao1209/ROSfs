@@ -5,6 +5,7 @@
 #include <cassert>
 #include <vector>
 #include <algorithm>
+#include <utility>
 
 namespace SpatialStorage {
     template <typename T>
@@ -16,15 +17,36 @@ namespace SpatialStorage {
     public:
         KeyType() : dimensions(0) {}
         KeyType(const std::vector<T>& initData) : data(initData), dimensions(initData.size()) {
-            assert(initData.size() % 2 == 0);  // MBR需要成对的坐标
+            assert(initData.size() % 2 == 0);
         }
 
         KeyType(const KeyType<T>& other) : data(other.data), dimensions(other.dimensions) {}
+        KeyType(KeyType<T>&& other) noexcept 
+            : data(std::move(other.data)), dimensions(other.dimensions) {
+            other.dimensions = 0;
+        }
 
-        virtual ~KeyType() = default;
+        KeyType<T>& operator=(const KeyType<T>& other) {
+            if (this != &other) {
+                data = other.data;
+                dimensions = other.dimensions;
+            }
+            return *this;
+        }
+
+        KeyType<T>& operator=(KeyType<T>&& other) noexcept {
+            if (this != &other) {
+                data = std::move(other.data);
+                dimensions = other.dimensions;
+                other.dimensions = 0;
+            }
+            return *this;
+        }
+
+        ~KeyType() = default;
 
         size_t size() const {
-            return dimensions;
+            return data.size();
         }
 
         const std::vector<T>& getData() const {

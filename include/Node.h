@@ -18,6 +18,31 @@ namespace SpatialStorage {
     struct KeyValuePair {
         KeyT            key;
         const void      *value;
+
+        KeyValuePair() = default;
+        KeyValuePair(const KeyValuePair& other) = default;
+        
+        KeyValuePair(KeyValuePair&& other) noexcept
+            : key(std::move(other.key)), value(other.value) {
+            other.value = nullptr;
+        }
+        
+        KeyValuePair& operator=(const KeyValuePair& other) = default;
+        
+        KeyValuePair& operator=(KeyValuePair&& other) noexcept {
+            if (this != &other) {
+                key = std::move(other.key);
+                value = other.value;
+                other.value = nullptr; 
+            }
+            return *this;
+        }
+        
+        KeyValuePair(const KeyT& k, const void* v) : key(k), value(v) {}
+        
+        KeyValuePair(KeyT&& k, const void* v) : key(std::move(k)), value(v) {}
+        
+        ~KeyValuePair() = default;
     };
 
     class IndexHeader {
@@ -167,7 +192,7 @@ namespace SpatialStorage {
                     data_ptr[i] = kvp.key[i];
                 }
                 
-                uint8_t *value_ptr = insert_ptr + (dimensions_ * 2 * sizeof(KeyT));
+                uint8_t *value_ptr = insert_ptr + key_size_;
                 if (value_size_ > 0 && kvp.value != nullptr) {
                     memcpy(value_ptr, kvp.value, value_size_);
                 }

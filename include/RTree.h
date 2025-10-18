@@ -10,9 +10,11 @@
 #include <list>
 #include <queue>
 #include <fcntl.h>
+#include <unordered_set>
 
 #include <unistd.h>
 #include <zconf.h>
+#include <utility>
 
 #include "FileCache.h"
 #include "Node.h"
@@ -224,7 +226,7 @@ namespace SpatialStorage {
             NodeHandler<KeyT> get_node_handler(uint64_t address) {
                 NodeHeader *header = get_address<NodeHeader>(address);
 
-                return NodeHandler<KeyT>{header,key_size_,value_size_,block_size_,dimensions_};
+                return NodeHandler<KeyT>{header,key_size_,header->IsLeafBlock()?value_size_:sizeof(uint64_t),block_size_,dimensions_};
             }
 
             // Allocate one new block.
@@ -436,11 +438,9 @@ namespace SpatialStorage {
                     auto cur_in_file_addr = cur_handler->get_in_file_addr();
                     KeyValuePair<KeyType<KeyT>> kvp1{mbr2,&cur_in_file_addr};
                     KeyValuePair<KeyType<KeyT>> kvp2{mbr1,&new_addr};
+
                     root_handler.insert(kvp1);
                     root_handler.insert(kvp2);
-
-                    get_header()->root_addr = new_root_addr;
-
                     return;
                 }
 
@@ -448,7 +448,6 @@ namespace SpatialStorage {
                 // insert the new mbr entry and modify the parent mbr entry
                 KeyValuePair<KeyType<KeyT>> kvp{mbr1,&new_addr};
                 split(ctx,kvp,&mbr2);
-
             }
 
             std::pair<
@@ -477,7 +476,7 @@ namespace SpatialStorage {
                         const KeyType<KeyT>& mbr2 = whole[j].key;
 
                         KeyT waste = mbr1.enlargement(mbr2) - mbr1.area() - mbr2.area();
-                        if (waste < min_waste) {
+                        if (waste > min_waste) {
                             min_waste = waste;
                             partition1 = i;
                             partition2 = j;
@@ -491,26 +490,38 @@ namespace SpatialStorage {
                 res1.push_back(whole[partition1]);
                 res2.push_back(whole[partition2]);
 
+                whole.erase(whole.begin()+partition2);
+                whole.erase(whole.begin()+partition1);
+
                 KeyType<KeyT> mbr1(res1[0].key);
                 KeyType<KeyT> mbr2(res2[0].key);
 
-                for(size_t i = 0; i < whole.size(); i++) {
-                    if (i == partition1 || i == partition2) {
-                        continue;
-                    }
+                while(!whole.empty()){
+                    KeyT maxdiff = static_cast<KeyT>(0);
+                    KeyT exp1,exp2;
+                    size_t pick;
+                    for(size_t i = 0; i < whole.size(); i++) {
+                        const KeyType<KeyT>& mbr = whole[i].key;
+                        KeyT expansion1 = mbr1.enlargement(mbr) - mbr1.area();
+                        KeyT expansion2 = mbr2.enlargement(mbr) - mbr2.area();
 
-                    const KeyType<KeyT>& mbr = whole[i].key;
-                    KeyT area = mbr.area();
-                    KeyT waste1 = mbr1.enlargement(mbr) - area - mbr1.area();
-                    KeyT waste2 = mbr2.enlargement(mbr) - area - mbr2.area();
-                    
-                    if (waste1 < waste2) {
-                        res1.push_back(whole[i]);
+                        KeyT expansion_diff = std::abs(expansion1-expansion2);
+                        if ( expansion_diff >= maxdiff) {
+                            pick = i;
+                            maxdiff = expansion_diff;
+                            exp1 = expansion1; exp2 = expansion2;
+                        }
+                    }
+                    const KeyType<KeyT>& mbr = whole[pick].key;
+                    if (exp1<exp2){
+                        res1.push_back(whole[pick]);
                         mbr1.mbr_enlarge(mbr);
-                    } else {
-                        res2.push_back(whole[i]);
+                    }
+                    else{
+                        res2.push_back(whole[pick]);
                         mbr2.mbr_enlarge(mbr);
                     }
+                    whole.erase(whole.begin()+pick);
                 }
 
                 return std::make_pair(res1, res2);

@@ -261,7 +261,7 @@ namespace SpatialStorage {
                     else{
                         if (
                             (mode==SearchMode::overlap && mbr.IsOverlap(key)) ||
-                            (mode==SearchMode::comprise && key>=mbr)
+                            (mode==SearchMode::comprise && mbr.IsOverlap(key))
                         ) {
                             auto child_value = handler->get_elem_value(i);
                             auto next_addr = *reinterpret_cast<const uint64_t*>(&child_value);
@@ -323,7 +323,7 @@ namespace SpatialStorage {
                 }
 
                 for (uint64_t i=0;i<cur_handler->get_count();i++){
-                    if(*key>=cur_handler->get_elem_key(i)){
+                    if(cur_handler->get_elem_key(i)>=*key){
                         auto child_value = cur_handler->get_elem_value(i);
                         uint64_t next_addr = *reinterpret_cast<const uint64_t*>(&child_value);
                         NodeHandler<KeyT, ValueT> next_node = get_node_handler(next_addr);
@@ -367,13 +367,13 @@ namespace SpatialStorage {
 
             KeyType<KeyT> get_node_mbr(NodeHandler<KeyT, ValueT>* handler) {
                 auto first_key = handler->get_elem_key(0);
-                KeyType<KeyT> mbr(first_key);
+                KeyType<KeyT> *mbr = new KeyType<KeyT>(first_key);
 
                 for(uint64_t i=1;i<handler->get_count();i++){
-                    mbr.mbr_enlarge(handler->get_elem_key(i));
+                    mbr->mbr_enlarge(handler->get_elem_key(i));
                 }
 
-                return mbr;
+                return *mbr;
             }
 
             void split(

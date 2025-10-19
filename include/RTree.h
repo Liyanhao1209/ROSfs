@@ -32,7 +32,7 @@ namespace SpatialStorage {
     template<typename KeyT, typename ValueT>
     class Context {
         public:
-            std::deque<std::pair<NodeHandler<KeyT, ValueT>*,uint64_t>> path;
+            std::deque<std::pair<uint64_t, uint64_t>> path;  // <in_file_address, entry_index>
     };
 
     template<typename KeyT, typename ValueT>
@@ -279,7 +279,7 @@ namespace SpatialStorage {
                 Context<KeyT, ValueT>* ctx
             ) {
                 if (handler->IsLeafBlock()) {
-                    std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> pth(handler,0);
+                    std::pair<uint64_t, uint64_t> pth(handler->get_in_file_addr(), 0);
                     ctx->path.push_back(pth);
                     return handler;
                 }
@@ -297,7 +297,7 @@ namespace SpatialStorage {
                     }
                 }
                 
-                std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> pth(handler,min_enlarge_index);
+                std::pair<uint64_t, uint64_t> pth(handler->get_in_file_addr(), min_enlarge_index);
                 ctx->path.push_back(pth);
                 auto child_value = handler->get_elem_value(min_enlarge_index);
                 auto next_addr = *reinterpret_cast<const uint64_t*>(&child_value);
@@ -314,7 +314,7 @@ namespace SpatialStorage {
                 if (cur_handler->IsLeafBlock()) {
                     for(uint64_t i=0;i<cur_handler->get_count();i++){
                         if(*key==cur_handler->get_elem_key(i)){
-                            std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> pth(cur_handler,i);
+                            std::pair<uint64_t, uint64_t> pth(cur_handler->get_in_file_addr(), i);
                             ctx->path.push_back(pth);
                             return cur_handler;
                         }
@@ -327,7 +327,7 @@ namespace SpatialStorage {
                         auto child_value = cur_handler->get_elem_value(i);
                         uint64_t next_addr = *reinterpret_cast<const uint64_t*>(&child_value);
                         NodeHandler<KeyT, ValueT> next_node = get_node_handler(next_addr);
-                        std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> pth(cur_handler,i);
+                        std::pair<uint64_t, uint64_t> pth(cur_handler->get_in_file_addr(), i);
                         ctx->path.push_back(pth);
                         auto res = FindLeaf(ctx,&next_node,key);
                         if(res==nullptr){
@@ -349,17 +349,18 @@ namespace SpatialStorage {
                 if (ctx->path.empty()){
                     return;
                 }
-                std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> handler_entry = ctx->path.back();
-                NodeHandler<KeyT, ValueT> *cur_handler = handler_entry.first;
+                std::pair<uint64_t, uint64_t> handler_entry = ctx->path.back();
+                uint64_t cur_addr = handler_entry.first;
                 uint64_t parent_entry_id = handler_entry.second;
                 ctx->path.pop_back();
 
-                KeyType<KeyT> old_mbr = get_node_mbr(cur_handler);
+                auto cur_handler = get_node_handler(cur_addr);
+                KeyType<KeyT> old_mbr = get_node_mbr(&cur_handler);
 
                 if(modify_key!=nullptr){
-                    cur_handler->set_elem_key(modify_key,parent_entry_id);
+                    cur_handler.set_elem_key(modify_key, parent_entry_id);
                 }
-                KeyType<KeyT> new_modify_key = get_node_mbr(cur_handler);
+                KeyType<KeyT> new_modify_key = get_node_mbr(&cur_handler);
                 if(old_mbr!=new_modify_key){
                     modify_parent_entry_mbr(ctx,&new_modify_key);
                 }
@@ -381,19 +382,21 @@ namespace SpatialStorage {
                 KeyValuePair<KeyType<KeyT>, ValueT>& insert_kvp,
                 KeyType<KeyT>* modify_key = nullptr
             ) {
-                std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> handler_entry = ctx->path.back();
-                NodeHandler<KeyT, ValueT> *cur_handler = handler_entry.first;
+                std::pair<uint64_t, uint64_t> handler_entry = ctx->path.back();
+                uint64_t cur_addr = handler_entry.first;
                 uint64_t parent_entry_id = handler_entry.second;
                 ctx->path.pop_back();
 
+                auto cur_handler = get_node_handler(cur_addr);
+
                 if (modify_key!=nullptr){
-                    cur_handler->set_elem_key(modify_key,parent_entry_id);
+                    cur_handler.set_elem_key(modify_key, parent_entry_id);
                 }
 
                 // not full,install(maybe modify)
-                if(!cur_handler->is_full()){
-                    cur_handler->insert(insert_kvp);
-                    auto new_mbr = get_node_mbr(cur_handler);
+                if(!cur_handler.is_full()){
+                    cur_handler.insert(insert_kvp);
+                    auto new_mbr = get_node_mbr(&cur_handler);
                     if (modify_key == nullptr) {
                         modify_key = new KeyType<KeyT>(new_mbr); 
                     } else {
@@ -410,18 +413,18 @@ namespace SpatialStorage {
                 NodeHeader *new_header = get_address<NodeHeader>(new_addr);
 
                 // set node header
-                BlockType block_type = cur_handler->IsLeafBlock()?BlockType::LeafBlock:BlockType::InnerBlock;
+                BlockType block_type = cur_handler.IsLeafBlock()?BlockType::LeafBlock:BlockType::InnerBlock;
                 *new_header = NodeHeader{block_type,0,new_addr};
-                auto seeds = pickseed(cur_handler, insert_kvp);
+                auto seeds = pickseed(&cur_handler, insert_kvp);
                 auto& partition1 = seeds.first;  
                 auto& partition2 = seeds.second;
                 NodeHandler<KeyT, ValueT> new_node_handler = get_node_handler(new_addr);
 
                 // reinsert the original node and maintain the modified mbr
-                cur_handler->clear();
+                cur_handler.clear();
                 KeyType<KeyT> *mbr2 = new KeyType<KeyT>(partition2[0].key);
                 for(uint64_t i=0;i<partition2.size();i++) {
-                    cur_handler->insert(partition2[i]);
+                    cur_handler.insert(partition2[i]);
                     mbr2->mbr_enlarge(partition2[i].key);
                 }
 
@@ -432,13 +435,13 @@ namespace SpatialStorage {
                     mbr1->mbr_enlarge(partition1[i].key);
                 }
 
-                if (cur_handler->get_in_file_addr()==get_root_addr()){
+                if (cur_handler.get_in_file_addr()==get_root_addr()){
                     uint64_t new_root_addr = allocate_block();
                     NodeHeader *new_root_header = get_address<NodeHeader>(new_root_addr);
                     *new_root_header = NodeHeader{BlockType::InnerBlock,0,new_root_addr};
 
                     NodeHandler<KeyT, ValueT> root_handler = get_node_handler(new_root_addr);
-                    auto cur_in_file_addr = cur_handler->get_in_file_addr();
+                    auto cur_in_file_addr = cur_handler.get_in_file_addr();
                     
                     KeyValuePair<KeyType<KeyT>, ValueT> kvp2{*mbr1, new_addr};
                     KeyValuePair<KeyType<KeyT>, ValueT> kvp1{*mbr2, cur_in_file_addr};
@@ -586,9 +589,12 @@ namespace SpatialStorage {
                     return false;
                 }
 
-                std::pair<NodeHandler<KeyT, ValueT>*,uint64_t> handler_entry = ctx.path.back();
+                std::pair<uint64_t, uint64_t> handler_entry = ctx.path.back();
+                uint64_t target_addr = handler_entry.first;
                 uint64_t parent_entry_id = handler_entry.second;
-                target_leaf->delete_elem_key(parent_entry_id);
+                
+                auto target_handler = get_node_handler(target_addr);
+                target_handler.delete_elem_key(parent_entry_id);
 
                 modify_parent_entry_mbr(&ctx);
 

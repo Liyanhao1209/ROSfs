@@ -148,18 +148,25 @@ class QueryFileIterator:
         
         return list(map(float,spatial_str.split()))
         
-def query_trigger(dump_pth='./dump_buffer',startup_time=default_time_step):
+def query_trigger(dump_pth = './dump_buffer',startup_time = default_time_step):
     startup_bar = tqdm.tqdm(total=startup_time,desc="Server Startup")
     for _ in range(startup_time):
         time.sleep(1)
         startup_bar.update(1)
         
+    # try:
+    #     shutil.rmtree(dump_pth)
+    # except Exception as e:
+    #     print(f"Error {e} happened while query initializing")
+    # finally:
+    #     os.makedirs(dump_pth)
+    
     try:
-        shutil.rmtree(dump_pth)
+        if not os.path.exists(dump_pth):
+            os.makedirs(dump_pth)
     except Exception as e:
         print(f"Error {e} happened while query initializing")
-    finally:
-        os.makedirs(dump_pth)
+        return
     
     trigger_map = {
         ip2key[ip] : QueryFileIterator(ip2query[ip]) for ip in edge_devices_ips

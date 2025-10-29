@@ -7,9 +7,9 @@ def convert(src:str,dst:str):
     print("ROSfs converting")
     st = time.time()
     try:
-        rosbag.rosfs_timekv.create(target)
+        rosbag.rosfs_timekv.create(dst)
         
-        rosfs_bag = rosbag.Bag(target,"rosfs")
+        rosfs_bag = rosbag.Bag(dst,"rosfs")
         bag = rosbag.Bag(src)
         
         rst = time.time()
@@ -27,7 +27,7 @@ def convert(src:str,dst:str):
         rosfs_bag.rosfs_batch_write(topics,msgs,ts,connection_headers=connection_headers)
     except Exception as e:
         print(f"Exception while converting:{e}")
-        shutil.rmtree(target)
+        shutil.rmtree(dst)
         exit(130)
     finally:
         bag.close()

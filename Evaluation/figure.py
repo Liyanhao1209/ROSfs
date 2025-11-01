@@ -2,7 +2,6 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from scipy.signal import find_peaks
 
 import matplotlib.pyplot as plt
 
@@ -14,55 +13,13 @@ plt.rcParams['xtick.labelsize'] = 18
 plt.rcParams['ytick.labelsize'] = 18
 plt.rcParams['legend.fontsize'] = 18
 
-import json
-import matplotlib.pyplot as plt
-import numpy as np
-import os
+from AOI import aoi_avg
 
-def bandwidth(json_files):
+colors = ['#2660A3', '#D0D0D2', '#368ECA', '#9C9EA1', '#757679', '#87C2E1']
+
+def bandwidth(json_file_paths):
     plt.figure(figsize=(12, 8))
     
-    colors = plt.cm.tab10(np.linspace(0, 1, len(json_files)))
-    
-    for i, file_path in enumerate(json_files):
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-        
-        time_sequence = data['time_sequence']
-        
-        times = [item[0] for item in time_sequence]
-        byte_lengths = [item[2] for item in time_sequence]
-        
-        bandwidths = []
-        time_points = []
-        
-        for j in range(len(times)):
-            if j == 0:
-                continue
-            
-            time_diff = times[j] - times[j-1]
-            if time_diff > 0:
-                bandwidth = (byte_lengths[j] * 8) / (time_diff * 1e6)
-                bandwidths.append(bandwidth)
-                time_points.append(times[j])
-        
-        file_name = os.path.basename(file_path)
-        plt.plot(time_points, bandwidths, color=colors[i], linewidth=2, label=file_name, alpha=0.8)
-    
-    plt.xlabel('Time (seconds)', fontsize=12)
-    plt.ylabel('Bandwidth (Mbps)', fontsize=12)
-    plt.title('Bandwidth Over Time', fontsize=14, fontweight='bold')
-    plt.grid(True, alpha=0.3)
-    plt.legend(fontsize=10)
-    plt.tight_layout()
-    plt.savefig('./bandwidth.png')
-    
-    return plt
-
-def plot_bandwidth(json_file_paths):
-    plt.figure(figsize=(12, 8))
-    
-    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
     markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'h']
     
     for idx, file_path in enumerate(json_file_paths):
@@ -101,15 +58,63 @@ def plot_bandwidth(json_file_paths):
     
     plt.xlabel('Time (seconds)')
     plt.ylabel('Bandwidth (Mbps)')
-    plt.title('Bandwidth Over Time')
+    # plt.title('Bandwidth Over Time')
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
-    plt.savefig('./bandwidth.png')
+    plt.savefig('./bandwidth.pdf')
 
-if __name__ == "__main__":
+def aoi(file_paths, split_numbers):
+    aoi_values = []
+    for file_path in file_paths:
+        aoi_val = aoi_avg(file_path)
+        aoi_values.append(aoi_val)
+    
+    plt.figure(figsize=(10, 6))
+    
+    x_pos = np.arange(len(split_numbers))
+    bar_width = 0.6
+    
+    bars = plt.bar(x_pos, aoi_values, width=bar_width, color=colors, edgecolor='black', linewidth=2)
+    
+    plt.xlabel('Number of Domains')
+    plt.ylabel('AOI Average (seconds)')
+    # plt.title('Reconstruction AOI average for different numbers of sub-domains')
+    
+    plt.xticks(x_pos, split_numbers)
+    plt.grid(axis='y', alpha=0.3)
+    legend_labels = [f'{num} domains' for num in split_numbers]
+    legend = plt.legend(bars, legend_labels, loc='upper center', 
+                        bbox_to_anchor=(0.5, 1.20), ncol=4, 
+                        frameon=True, handletextpad=0.5, columnspacing=1.0)
+    
+    # plt.figtext(0.5, 1.02, 'Domains', ha='center', va='bottom', 
+    #             fontweight='bold', fontsize=plt.rcParams['legend.fontsize'])
+    
+    plt.tight_layout()
+    
+    plt.savefig('aoi_avg.pdf', format='pdf')
+    plt.close()
+    
+def plot_bandwidth():
     json_files = [
         "/data/GroundAir/Evaluation/split/monitor.aoi"
     ]
     
-    plot_bandwidth(json_files) 
+    bandwidth(json_files) 
+
+def plot_aoi():
+    json_files = [
+        "/data/GroundAir/Evaluation/split/monitor.aoi",
+        "/data/GroundAir/Evaluation/split/monitor.aoi",
+        "/data/GroundAir/Evaluation/split/monitor.aoi",
+        "/data/GroundAir/Evaluation/split/monitor.aoi"
+    ]
+    
+    partitions = [1,4,9,16]
+    
+    aoi(json_files,partitions)
+
+if __name__ == "__main__":
+    # plot_bandwidth()
+    plot_aoi()

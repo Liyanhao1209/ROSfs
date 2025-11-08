@@ -73,14 +73,14 @@ if __name__ == "__main__":
         if not os.path.exists(output):
             os.makedirs(output)
         
-        new_container_pth = os.path.join(output,f'GroundAir_split_{i+1}.bag')
+        new_container_pth = os.path.join(output,f'GroundAir_split_{0 if i+1<10 else ""}{i+1}.bag')
         rosbag.rosfs_timekv.create(new_container_pth)
         with rosbag.Bag(new_container_pth,'rosfs') as rosfs:
             def write(handler,cnt,start_time,buffer,step,tp1,tp2,base):
                 for i in range(cnt):
                     m1, m2 = buffer.pop()
                     # Calculate the time offset in seconds
-                    offset_seconds = base * cnt * step + (i+1) * step
+                    offset_seconds = base * (cnt-1) * step + i * step
                     # Convert to a duration
                     duration = rospy.Duration(offset_seconds)
                     stamp = start_time + duration

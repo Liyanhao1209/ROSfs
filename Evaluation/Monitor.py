@@ -21,7 +21,7 @@ def push_aerial(bag_backend:str):
     socket.bind("tcp://*:5555")
     
     for i,rosfs_dir in enumerate(sorted(os.listdir(bag_backend))):
-        # print(f"aerial:{rosfs_dir}")
+        print(f"aerial:{rosfs_dir},{i}")
         pth = os.path.join(bag_backend,rosfs_dir)
         handler = rosbag.Bag(pth,'rosfs')
         if not i:
@@ -59,7 +59,7 @@ def push_vehicle(bag_backend:str):
     socket.bind("tcp://*:5556")
     
     for i,rosfs_dir in enumerate(sorted(os.listdir(bag_backend))):
-        # print(f"vehicle:{rosfs_dir}")
+        print(f"vehicle:{rosfs_dir},{i}")
         pth = os.path.join(bag_backend,rosfs_dir)
         handler = rosbag.Bag(pth,'rosfs')
         if not i:

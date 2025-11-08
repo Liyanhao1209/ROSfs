@@ -17,10 +17,40 @@ from AOI import aoi_avg
 
 colors = ['#2660A3', '#D0D0D2', '#368ECA', '#9C9EA1', '#757679', '#87C2E1']
 
-def bandwidth(json_file_paths):
+def bandwidth(json_file_paths, legend_alias):
     plt.figure(figsize=(12, 8))
     
     markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'h']
+    
+    with open(json_file_paths[0], 'r') as f:
+        data = json.load(f)
+    
+    time_sequence = data['time_sequence']
+    total_bytes = sum([item[2] for item in time_sequence])
+    
+    duration = (total_bytes * 8) / (550 * 1e6) 
+    
+    start_time = 3600
+    end_time = start_time + duration
+    
+    color_idx = len(json_file_paths)
+    color = "#368ECA"
+    
+    # 添加从0到3600秒的高度为0的水平线
+    plt.hlines(y=0, xmin=0, xmax=start_time, 
+              color=color, linewidth=2, linestyle='-',
+              zorder=2)
+    
+    # 将550Mbps的线加粗（从linewidth=2增加到linewidth=3）
+    plt.hlines(y=550, xmin=start_time, xmax=end_time, 
+              color=color, linewidth=3, linestyle='-',  # 加粗到3
+              label='original transfer', zorder=2)
+    
+    # 垂直线也相应加粗
+    plt.vlines(x=start_time, ymin=0, ymax=550, 
+               color=color, linewidth=3, linestyle='-', zorder=2)  # 加粗到3
+    plt.vlines(x=end_time, ymin=0, ymax=550, 
+               color=color, linewidth=3, linestyle='-', zorder=2)  # 加粗到3
     
     for idx, file_path in enumerate(json_file_paths):
         with open(file_path, 'r') as f:
@@ -49,20 +79,30 @@ def bandwidth(json_file_paths):
             else:
                 bandwidth_mbps.append(0)
         
-        file_name = os.path.basename(file_path)
-        color = colors[idx % len(colors)]
-        marker = markers[idx % len(markers)]
+        max_points = 1000
+        if len(time_points[1:]) > max_points:
+            step = max(1, len(time_points[1:]) // max_points)
+            time_points_sampled = time_points[1::step]
+            bandwidth_sampled = bandwidth_mbps[::step]
+        else:
+            time_points_sampled = time_points[1:]
+            bandwidth_sampled = bandwidth_mbps
         
-        plt.plot(time_points[1:], bandwidth_mbps, color=color, marker=marker, 
-                markersize=4, linewidth=1.5, label=file_name, zorder=2)
+        color = colors[idx % len(colors)]
+        
+        plt.step(time_points_sampled, bandwidth_sampled, 
+                where='post',
+                color=color, 
+                linewidth=1.5, 
+                label=legend_alias[idx], 
+                zorder=2)
     
-    plt.grid(axis='y', linewidth=1, color='black', alpha=0.5, zorder=3)
+    plt.grid(axis='y', linewidth=1, color='black', alpha=0.5, zorder=1)
     plt.xlabel('Time (seconds)')
     plt.ylabel('Bandwidth (Mbps)')
-    plt.legend()
+    plt.legend(loc='upper left')
     plt.tight_layout()
     plt.savefig('./bandwidth.pdf')
-
 def aoi(file_paths, split_numbers):
     aoi_values = []
     for file_path in file_paths:
@@ -72,7 +112,7 @@ def aoi(file_paths, split_numbers):
     plt.figure(figsize=(10, 6))
     
     x_pos = np.arange(len(split_numbers))
-    bar_width = 0.1
+    bar_width = 0.3
     
     bars = plt.bar(x_pos, aoi_values, width=bar_width, color=colors, edgecolor='black', linewidth=2, zorder=2)
     
@@ -84,7 +124,7 @@ def aoi(file_paths, split_numbers):
     plt.xlim(-0.5, len(split_numbers)-0.5)
     
     plt.xticks(x_pos, split_numbers)
-    legend_labels = [f'{num} domains' for num in split_numbers]
+    legend_labels = [f'{num} {"domains" if num >1 else "domain"}' for num in split_numbers]
     legend = plt.legend(bars, legend_labels, loc='upper center', 
                         bbox_to_anchor=(0.5, 1.20), ncol=4, 
                         frameon=True, handletextpad=0.5, columnspacing=1.0)
@@ -113,7 +153,7 @@ def completion_time(data_list, split_numbers):
             pose_times.append(0)
     
     x_pos = np.arange(len(split_numbers))
-    bar_width = 0.5
+    bar_width = 0.3
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
@@ -158,30 +198,32 @@ def completion_time(data_list, split_numbers):
 
 def plot_completion():
     mock_data = [
-        [120, 45, 180],  
-        [25, 20, 35],     
-        [18, 15, 28],     
-        [15, 10, 22],    
-        [12, 5, 18]      
+        [3600,300,197*60],  
+        [900, 138*60, 300],     
+        [225, 20*60, 500],        
     ]
      
-    partitions = [1,4,9,16,25]
+    partitions = [1,4,16]
     
     completion_time(mock_data,partitions)
 
 def plot_bandwidth():
     json_files = [
-        "/data/GroundAir/Evaluation/split/monitor.aoi"
+        "/data/GroundAir/Evaluation/split-4/monitor.aoi"
     ]
     
-    bandwidth(json_files) 
+    legends = ["enhanced transfer"]
+    
+    bandwidth(json_files,legends) 
 
 def plot_aoi():
     json_files = [
-        "/data/GroundAir/Evaluation/split/monitor.aoi",
+        "/data/GroundAir/Evaluation/split-1/monitor.aoi",
+        "/data/GroundAir/Evaluation/split-4/monitor.aoi",
+        "/data/GroundAir/Evaluation/split-16/monitor.aoi",
     ]
     
-    partitions = [4]
+    partitions = [1,4,16]
     
     aoi(json_files,partitions)
 

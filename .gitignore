@@ -4,7 +4,7 @@ dataset
 *.pdf
 *.bag
 *.txt
-split
+split*
 dump_buffer
 
 __pycache__

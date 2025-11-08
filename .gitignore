@@ -1,7 +1,10 @@
 target
 dataset
 *.png
+*.pdf
 *.bag
 *.txt
 split
 dump_buffer
+
+__pycache__

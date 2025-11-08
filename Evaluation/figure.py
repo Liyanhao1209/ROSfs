@@ -54,12 +54,11 @@ def bandwidth(json_file_paths):
         marker = markers[idx % len(markers)]
         
         plt.plot(time_points[1:], bandwidth_mbps, color=color, marker=marker, 
-                markersize=4, linewidth=1.5, label=file_name)
+                markersize=4, linewidth=1.5, label=file_name, zorder=2)
     
+    plt.grid(axis='y', linewidth=1, color='black', alpha=0.5, zorder=3)
     plt.xlabel('Time (seconds)')
     plt.ylabel('Bandwidth (Mbps)')
-    # plt.title('Bandwidth Over Time')
-    plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
     plt.savefig('./bandwidth.pdf')
@@ -73,29 +72,103 @@ def aoi(file_paths, split_numbers):
     plt.figure(figsize=(10, 6))
     
     x_pos = np.arange(len(split_numbers))
-    bar_width = 0.6
+    bar_width = 0.1
     
-    bars = plt.bar(x_pos, aoi_values, width=bar_width, color=colors, edgecolor='black', linewidth=2)
+    bars = plt.bar(x_pos, aoi_values, width=bar_width, color=colors, edgecolor='black', linewidth=2, zorder=2)
+    
+    plt.grid(axis='y', linewidth=1, color='black', alpha=0.5, zorder=3)
     
     plt.xlabel('Number of Domains')
     plt.ylabel('AOI Average (seconds)')
-    # plt.title('Reconstruction AOI average for different numbers of sub-domains')
+    
+    plt.xlim(-0.5, len(split_numbers)-0.5)
     
     plt.xticks(x_pos, split_numbers)
-    plt.grid(axis='y', alpha=0.3)
     legend_labels = [f'{num} domains' for num in split_numbers]
     legend = plt.legend(bars, legend_labels, loc='upper center', 
                         bbox_to_anchor=(0.5, 1.20), ncol=4, 
                         frameon=True, handletextpad=0.5, columnspacing=1.0)
     
-    # plt.figtext(0.5, 1.02, 'Domains', ha='center', va='bottom', 
-    #             fontweight='bold', fontsize=plt.rcParams['legend.fontsize'])
-    
     plt.tight_layout()
     
     plt.savefig('aoi_avg.pdf', format='pdf')
     plt.close()
+
+def completion_time(data_list, split_numbers):
+    sampling_times = []
+    pose_times = []
+    reconstruction_times = []
+    merging_times = []
     
+    for i, data in enumerate(data_list):
+        if i == 0:
+            sampling_times.append(data[0])
+            pose_times.append(data[1])
+            reconstruction_times.append(data[2])
+            merging_times.append(0)
+        else:
+            sampling_times.append(data[0])
+            reconstruction_times.append(data[1])
+            merging_times.append(data[2])
+            pose_times.append(0)
+    
+    x_pos = np.arange(len(split_numbers))
+    bar_width = 0.5
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    bottom = np.zeros(len(split_numbers))
+    
+    sampling_bars = ax.bar(x_pos, sampling_times, bar_width, label='Sampling', 
+                           color=colors[0], edgecolor='black', linewidth=2, zorder=2)
+    
+    bottom += sampling_times
+    
+    pose_bars = ax.bar(x_pos, pose_times, bar_width, bottom=bottom, 
+                       label='Pose Computation', color=colors[1], 
+                       edgecolor='black', linewidth=2, zorder=2)
+    
+    bottom += pose_times
+    
+    reconstruction_bars = ax.bar(x_pos, reconstruction_times, bar_width, 
+                                 bottom=bottom, label='Reconstruction', 
+                                 color=colors[2], edgecolor='black', linewidth=2, zorder=2)
+    
+    bottom += reconstruction_times
+    
+    merging_bars = ax.bar(x_pos, merging_times, bar_width, bottom=bottom, 
+                          label='Merging', color=colors[3], 
+                          edgecolor='black', linewidth=2, zorder=2)
+    
+    ax.grid(axis='y', linewidth=1, color='black', alpha=0.5, zorder=3)
+    ax.set_xlabel('Number of Domains')
+    ax.set_ylabel('Completion Time (seconds)')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(split_numbers)
+    
+    max_height = max(bottom)
+    ax.set_ylim(0, max_height * 1.1)
+    
+    ax.legend(loc='upper right', frameon=True)
+    
+    plt.tight_layout()
+    plt.savefig('completion_time.pdf', format='pdf', bbox_inches='tight')
+    plt.close()
+    
+
+def plot_completion():
+    mock_data = [
+        [120, 45, 180],  
+        [25, 20, 35],     
+        [18, 15, 28],     
+        [15, 10, 22],    
+        [12, 5, 18]      
+    ]
+     
+    partitions = [1,4,9,16,25]
+    
+    completion_time(mock_data,partitions)
+
 def plot_bandwidth():
     json_files = [
         "/data/GroundAir/Evaluation/split/monitor.aoi"
@@ -106,15 +179,13 @@ def plot_bandwidth():
 def plot_aoi():
     json_files = [
         "/data/GroundAir/Evaluation/split/monitor.aoi",
-        "/data/GroundAir/Evaluation/split/monitor.aoi",
-        "/data/GroundAir/Evaluation/split/monitor.aoi",
-        "/data/GroundAir/Evaluation/split/monitor.aoi"
     ]
     
-    partitions = [1,4,9,16]
+    partitions = [4]
     
     aoi(json_files,partitions)
 
 if __name__ == "__main__":
-    # plot_bandwidth()
+    plot_bandwidth()
     plot_aoi()
+    plot_completion()

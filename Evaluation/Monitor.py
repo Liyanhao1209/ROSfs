@@ -198,7 +198,7 @@ if __name__ == "__main__":
     print("All threads completed, sorting time_sequence...")
     sort_time_sequence()
     
-    with open(os.path.join(bag_path,'monitor.aoi'),'w') as f:
+    with open(os.path.join(bag_path,f'{partition}.aoi'),'w') as f:
         data = {
             "delta": 0,
             "time_sequence": time_sequence

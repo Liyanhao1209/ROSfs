@@ -6,5 +6,8 @@ dataset
 *.txt
 split*
 dump_buffer
+*.aoi
+avg_aoi_avg
+aoi_avgs
 
 __pycache__

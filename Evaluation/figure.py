@@ -199,8 +199,8 @@ def completion_time(data_list, split_numbers):
 def plot_completion():
     mock_data = [
         [3600,300,197*60],  
-        [900, 138*60, 300],     
-        [225, 20*60, 500],        
+        [3600, 138*60, 300],     
+        [3600, 20*60, 500],        
     ]
      
     partitions = [1,4,16]

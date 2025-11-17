@@ -38,3 +38,29 @@ def aoi_avg(aoi_fn:str,T=None)->float:
     return ((2*delta_0+ts[0][1])*ts[0][1]-pow(ts[0][1],2)+pow(T-ts[up][0],2))/(2*T) + sum(
         ((ts[i][0]-ts[i-1][0])*(ts[i][1]-ts[i][0]) + pow(ts[i][0]-ts[i-1][0],2)) for i in range(1,up+1)            
     )/T
+    
+if __name__ == "__main__":
+    import os
+    AoI_backend = "/data/GroundAir/Evaluation/AoI"
+    
+    avg = [0,0,0]
+    cnt = 0
+    for sub_dir in os.listdir(AoI_backend):
+        sub_pth = os.path.join(AoI_backend,sub_dir)
+        aoi = []
+        for i,af in enumerate(os.listdir(sub_pth)):
+            if af.endswith('.aoi'):
+                pth = os.path.join(sub_pth,af)
+                av = aoi_avg(pth)
+                avg[i] += av
+                aoi.append((av,af))
+        # print(aoi)
+        with open(os.path.join(sub_pth,'aoi_avgs'),'w') as avgf:
+            for a,af in aoi:
+                avgf.write(f"{af}:{a}\n")
+        cnt += 1
+    
+    with open(os.path.join(AoI_backend,'avg_aoi_avg'),'w') as avgaavgf:
+        for a in avg:
+            avgaavgf.write(f"{a/cnt}\n")
+    

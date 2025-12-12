@@ -635,6 +635,8 @@ class Bag(object):
             for _ in range(len(topics)):
                 ts.append(genpy.Time.from_sec(time.time()))
         
+        if not connection_headers:
+            connection_headers = [None for _ in range(len(msgs))]
         msg_types,md5sums,msg_defs,secs,nsecs,serialized_bytess = [],[],[],[],[],[]
         for t in ts:
             secs.append(t.secs)

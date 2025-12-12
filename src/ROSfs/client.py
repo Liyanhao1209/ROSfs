@@ -64,3 +64,4 @@ class ROSfsClient:
         socket.send_multipart(
             (pickle.dumps(worker_cmd.CMD_MOUNT),pickle.dumps(bag_backend))
         )
+        

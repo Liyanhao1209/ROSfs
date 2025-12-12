@@ -493,6 +493,7 @@ void Player::doPublish(MessageInstance const& m) {
     // If immediate specified, play immediately
     if (options_.at_once) {
         time_publisher_.stepClock();
+
         pub_iter->second.publish(m);
         printTime();
         return;
@@ -609,6 +610,7 @@ void Player::doPublish(MessageInstance const& m) {
     }
 
     pub_iter->second.publish(m);
+    std::cout << "\n[Log] Publishing: " << m.getTopic() << " | Time: " << m.getTime() << std::endl;
 }
 
 

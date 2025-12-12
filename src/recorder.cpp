@@ -353,8 +353,9 @@ void Recorder::doQueue(const ros::MessageEvent<topic_tools::ShapeShifter const>&
     //void Recorder::doQueue(topic_tools::ShapeShifter::ConstPtr msg, string const& topic, shared_ptr<ros::Subscriber> subscriber, shared_ptr<int> count) {
     Time rectime = Time::now();
     
-    if (options_.verbose)
-        cout << "Received message on topic " << subscriber->getTopic() << endl;
+    // if (options_.verbose)
+    //     cout << "Received message on topic " << subscriber->getTopic() << endl;
+    std::cout << "Received message on topic " << subscriber->getTopic() << std::endl;
 
     OutgoingMessage out(topic, msg_event.getMessage(), msg_event.getConnectionHeaderPtr(), rectime, msg_idx.load());
     msg_idx.fetch_add(1,std::memory_order_relaxed);

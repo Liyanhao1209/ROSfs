@@ -27,20 +27,32 @@ class worker_cmd(Enum):
     INVALID_CMD = "invalid cmd"
 
 class ROSfsWorker:
-    def __init__(self, zmq_port, zmq_context):
+    def __init__(self, zmq_port, zmq_context, ready_event=None):
+        """
+        初始化 Worker
+        
+        Args:
+            zmq_port: 监听端口
+            zmq_context: ZMQ Context（可以与 DHCP 共享）
+            ready_event: 可选的 threading.Event，当 Worker 准备好接收连接时会 set
+        """
         self._path_ = None
         self._port_ = zmq_port
         self._zmqcontext_ = zmq_context
+        self._ready_event_ = ready_event
         
-        # 优化：使用 PAIR 模式，适合一对一独占连接，支持单向流式推送
+        # 使用 PAIR 模式，适合一对一独占连接
         self._zmqsocket_ = self._zmqcontext_.socket(zmq.PAIR)
-        self._zmqsocket_.bind(f"tcp://*:{self._port_}")
-        
-        # 设置 linger 为 0，避免关闭时 socket 卡死
         self._zmqsocket_.setsockopt(zmq.LINGER, 0)
+        
+        # 设置接收超时，便于检查 _running_ 标志
+        self._zmqsocket_.setsockopt(zmq.RCVTIMEO, 1000)  # 1秒超时
+        
+        self._zmqsocket_.bind(f"tcp://*:{self._port_}")
         
         self._running_ = True
         self._bag_handler_ = None
+        self._closed_ = False
 
     def mount(self, bag_backend):
         self._path_ = bag_backend
@@ -63,13 +75,23 @@ class ROSfsWorker:
         return self._bag_handler_
 
     def listen(self):
-        logging.info(f"Started listening on port {self._port_} (Mode: PAIR Streaming)")
+        logging.info(f"Worker started listening on port {self._port_} (Mode: PAIR Streaming)")
+        
+        # 通知 DHCP Scheduler，Worker 已准备好
+        if self._ready_event_:
+            self._ready_event_.set()
         
         while self._running_:
             try:
-                # 阻塞接收命令
-                args = self._zmqsocket_.recv_multipart()
-                if not args: continue
+                # 阻塞接收命令（带超时）
+                try:
+                    args = self._zmqsocket_.recv_multipart()
+                except zmq.Again:
+                    # 超时，继续循环检查 _running_
+                    continue
+                    
+                if not args: 
+                    continue
                 
                 cmd = pickle.loads(args[0])
 
@@ -86,11 +108,20 @@ class ROSfsWorker:
                     self._send_error("Unknown Command")
 
             except zmq.ContextTerminated:
+                logging.info(f"Worker on port {self._port_}: Context terminated")
                 break
+            except zmq.ZMQError as e:
+                if not self._running_:
+                    break
+                logging.error(f"Worker Loop ZMQ Error: {e}")
             except Exception as e:
                 logging.error(f"Worker Loop Error: {e}")
-                self._send_error(str(e))
+                try:
+                    self._send_error(str(e))
+                except:
+                    pass
         
+        logging.info(f"Worker on port {self._port_} stopped.")
         self.close()
 
     def _handle_mount(self, args):
@@ -152,12 +183,29 @@ class ROSfsWorker:
             self._send_error(str(e))
 
     def _send_error(self, msg):
-        self._zmqsocket_.send_multipart([
-            pickle.dumps(worker_cmd.ACK_ERROR), 
-            pickle.dumps(msg)
-        ])
+        try:
+            self._zmqsocket_.send_multipart([
+                pickle.dumps(worker_cmd.ACK_ERROR), 
+                pickle.dumps(msg)
+            ])
+        except zmq.ZMQError:
+            pass  # socket 可能已关闭
 
     def close(self):
+        """关闭 Worker，释放资源"""
+        if self._closed_:
+            return
+        self._closed_ = True
+        self._running_ = False
+        
         if self._bag_handler_:
-            self._bag_handler_.close()
-        self._zmqsocket_.close()
+            try:
+                self._bag_handler_.close()
+            except:
+                pass
+            self._bag_handler_ = None
+        
+        try:
+            self._zmqsocket_.close()
+        except:
+            pass

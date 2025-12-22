@@ -11,7 +11,7 @@ except ImportError:
 
 # 引入项目内部模块
 from .worker import ROSfsWorker
-from .dhcp import dhcp as dhcp_enums
+from .dhcp import dhcp as dhcp_enums, DHCP_Scheduler, DHCPOptions, PortAllocator
 
 # 配置日志格式
 logging.basicConfig(level=logging.INFO,
@@ -56,33 +56,39 @@ class ROSfsCmds(UserDict):
             print(self.get_valid_cmds(), file=sys.stderr)
 
 def worker_cmd(argv):
-    parser = optparse.OptionParser(usage="rosfs worker -p PORT",
-                                   description="Start a ROSfs worker node to serve local bag data.",
-                                   formatter=optparse.IndentedHelpFormatter())
+    """
+    启动 DHCP Scheduler 服务，监听指定端口。
+    当 Client 发起 allocate 请求时，DHCP 会为其分配一个专用 Worker 端口。
+    """
+    parser = optparse.OptionParser(
+        usage="rosfs worker -p PORT [-m MAX_CLIENTS]",
+        description="Start a ROSfs DHCP Scheduler that manages worker allocation for clients.",
+        formatter=optparse.IndentedHelpFormatter()
+    )
     
     parser.add_option("-p", "--port", dest="port", default="5555", 
-                      action="store", help="Specify the worker binding port")
+                      action="store", help="Specify the DHCP scheduler binding port (default: 5555)")
+    parser.add_option("-m", "--max-clients", dest="max_clients", default="100",
+                      action="store", help="Maximum number of concurrent client workers (default: 100)")
     
     (options, args) = parser.parse_args(argv)
     
     port = int(options.port)
-    logging.info(f"Initializing ROSfs Worker on port {port}...")
+    max_clients = int(options.max_clients)
+    
+    logging.info(f"Initializing ROSfs DHCP Scheduler on port {port}...")
+    logging.info(f"Max concurrent clients: {max_clients}")
+    logging.info(f"Worker port range: {port + 1} - {port + max_clients}")
 
-    # 1. 创建 ZMQ Context
-    context = zmq.Context()
-    worker = None
+    # 创建 DHCP 配置选项
+    dhcp_options = DHCPOptions(port=port, max_clients=max_clients)
+    scheduler = None
 
-    # 2. 定义信号处理函数 (Ctrl+C)
+    # 定义信号处理函数 (Ctrl+C)
     def signal_handler(signum, frame):
-        logging.info("\nReceived Signal (Ctrl+C). Shutting down worker...")
-        if worker:
-            # 停止运行标志
-            worker._running_ = False
-            # 关闭 Socket，这将导致 Client 端连接中断 (ContextTerminated/ZMQError)
-            # 从而通知 Client 服务已停止
-            worker.close()
-            # 销毁 Context 确保退出
-            context.term()
+        logging.info("\nReceived Signal (Ctrl+C). Shutting down DHCP Scheduler...")
+        if scheduler:
+            scheduler.stop()
         sys.exit(0)
 
     # 注册信号
@@ -90,14 +96,16 @@ def worker_cmd(argv):
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        # 3. 实例化并启动 Worker
-        worker = ROSfsWorker(zmq_port=port, zmq_context=context)
-        worker.listen() # 这是一个阻塞循环
+        # 实例化并启动 DHCP Scheduler
+        scheduler = DHCP_Scheduler(dhcp_options)
+        scheduler.listen()  # 这是一个阻塞循环
     except zmq.error.ZMQError as e:
         logging.error(f"ZMQ Error during startup: {e}")
         sys.exit(1)
     except Exception as e:
-        logging.error(f"Worker crashed: {e}")
+        logging.error(f"DHCP Scheduler crashed: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 def ROSfsmain(argv=None):

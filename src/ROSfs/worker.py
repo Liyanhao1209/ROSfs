@@ -64,7 +64,7 @@ class ROSfsWorker:
         if not self._path_ or not os.path.exists(self._path_):
             raise ROSfsWorkerException(f"Backend path invalid: {self._path_}")
         
-        return bag.Bag(self.__path__,'rosfs')
+        return bag.Bag(self._path_,'rosfs')
         
         # if self._bag_handler_ is None:
         #     # 假设 bag.Bag 支持 allow_unindexed=True (根据你的描述是魔改版)

@@ -2,16 +2,11 @@ import sys
 import signal
 import optparse
 import logging
-import zmq
 
 try:
     from UserDict import UserDict  # Python 2.x
 except ImportError:
     from collections import UserDict  # Python 3.x
-
-# 引入项目内部模块
-from .worker import ROSfsWorker
-from .dhcp import dhcp as dhcp_enums, DHCP_Scheduler, DHCPOptions, PortAllocator
 
 # 配置日志格式
 logging.basicConfig(level=logging.INFO,
@@ -60,6 +55,10 @@ def worker_cmd(argv):
     启动 DHCP Scheduler 服务，监听指定端口。
     当 Client 发起 allocate 请求时，DHCP 会为其分配一个专用 Worker 端口。
     """
+    # 延迟导入，避免循环依赖
+    import zmq
+    from .dhcp import DHCP_Scheduler, DHCPOptions
+    
     parser = optparse.OptionParser(
         usage="rosfs worker -p PORT [-m MAX_CLIENTS]",
         description="Start a ROSfs DHCP Scheduler that manages worker allocation for clients.",

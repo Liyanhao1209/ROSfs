@@ -2,16 +2,32 @@ from .dhcp import dhcp
 import zmq
 from threading import Lock
 import pickle
-import rospy
-from .worker import ROSfsWorkerException, worker_cmd
 import logging
 
 logging.basicConfig(level=logging.INFO,
                     format='[Client] %(asctime)s - %(levelname)s - %(message)s')
 
-class MissConnectedException(ROSfsWorkerException): pass
-class DHCPAllocateException(ROSfsWorkerException): pass
-class RemoteReadException(ROSfsWorkerException): pass
+# 延迟导入 worker_cmd
+_worker_cmd = None
+
+def _get_worker_cmd():
+    """延迟导入 worker_cmd，避免循环依赖"""
+    global _worker_cmd
+    if _worker_cmd is None:
+        from .worker import worker_cmd
+        _worker_cmd = worker_cmd
+    return _worker_cmd
+
+# 自定义异常类，不依赖 worker 模块
+class ROSfsClientException(Exception):
+    def __init__(self, value=None):
+        self.value = value
+    def __str__(self):
+        return str(self.value)
+
+class MissConnectedException(ROSfsClientException): pass
+class DHCPAllocateException(ROSfsClientException): pass
+class RemoteReadException(ROSfsClientException): pass
 
 class ROSfsClient:
     def __init__(self, timeout_ms=5000):
@@ -127,6 +143,7 @@ class ROSfsClient:
         if (ip, port) not in self._workersockets_:
             raise MissConnectedException("Worker not connected")
         
+        worker_cmd = _get_worker_cmd()
         socket = self._workersockets_[(ip, port)]
         socket.send_multipart([
             pickle.dumps(worker_cmd.CMD_MOUNT),
@@ -138,13 +155,14 @@ class ROSfsClient:
         if cmd != worker_cmd.ACK:
             # 尝试读取错误信息
             msg = pickle.loads(res[1]) if len(res) > 1 else "Unknown"
-            raise ROSfsWorkerException(f"Mount failed: {msg}")
+            raise ROSfsClientException(f"Mount failed: {msg}")
 
     def read_messages(self, ip, port, topics, start_time, end_time):
         """
         [Generator] Time-based query
         Yields: (topic, data_bytes, timestamp, datatype)
         """
+        worker_cmd = _get_worker_cmd()
         payload = [
             pickle.dumps(worker_cmd.CMD_READ_TIME),
             pickle.dumps(topics),
@@ -157,6 +175,7 @@ class ROSfsClient:
         """
         [Generator] ID-based query
         """
+        worker_cmd = _get_worker_cmd()
         payload = [
             pickle.dumps(worker_cmd.CMD_READ_ID),
             pickle.dumps(topics),
@@ -169,6 +188,7 @@ class ROSfsClient:
         if (ip, port) not in self._workersockets_:
             raise MissConnectedException("Worker not connected")
         
+        worker_cmd = _get_worker_cmd()
         socket = self._workersockets_[(ip, port)]
         
         # 1. 发送请求

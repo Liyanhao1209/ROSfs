@@ -1,4 +1,3 @@
-from .worker import ROSfsWorkerException, ROSfsWorker, worker_cmd
 import zmq
 from enum import Enum
 import abc, threading, pickle, logging, signal
@@ -15,9 +14,12 @@ class dhcp(Enum):
     INVALID_CMD = "invalid cmd"
 
 
-class DHCPException(ROSfsWorkerException):
+class DHCPException(Exception):
     """DHCP 相关异常"""
-    pass
+    def __init__(self, value=None):
+        self.value = value
+    def __str__(self):
+        return str(self.value)
 
 
 class PortAllocator:
@@ -115,6 +117,9 @@ class DHCP_Scheduler:
         self._cleanup()
 
     def _allocate(self, *args, **kwargs):
+        # 延迟导入 Worker，避免循环依赖
+        from .worker import ROSfsWorker
+        
         with self._latch_:
             # 1. 分配端口
             new_port = self._allocator_.allocate_new_port(args, kwargs)

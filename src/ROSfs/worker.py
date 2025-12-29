@@ -27,19 +27,21 @@ class worker_cmd(Enum):
     INVALID_CMD = "invalid cmd"
 
 class ROSfsWorker:
-    def __init__(self, zmq_port, zmq_context, ready_event=None):
+    def __init__(self, zmq_port, zmq_context=None, ready_event=None):
         """
         初始化 Worker
         
         Args:
             zmq_port: 监听端口
-            zmq_context: ZMQ Context（可以与 DHCP 共享）
+            zmq_context: ZMQ Context（不再使用，每个 worker 创建独立 context 避免断连问题）
             ready_event: 可选的 threading.Event，当 Worker 准备好接收连接时会 set
         """
         self._path_ = None
         self._port_ = zmq_port
-        self._zmqcontext_ = zmq_context
         self._ready_event_ = ready_event
+        
+        # 每个 worker 使用独立的 Context，避免 PAIR socket 断连导致共享 context 出问题
+        self._zmqcontext_ = zmq.Context()
         
         # 使用 PAIR 模式，适合一对一独占连接
         self._zmqsocket_ = self._zmqcontext_.socket(zmq.PAIR)
@@ -169,14 +171,14 @@ class ROSfsWorker:
             self._zmqsocket_.send_multipart([pickle.dumps(worker_cmd.ACK)])
 
             # 2. 循环读取并推送数据 (Streaming)
-            # raw=True 返回: (topic, msg_tuple, t)
-            # msg_tuple 是 (datatype, data, md5sum, position, pytype)
+            # rosfs 模式下 raw=True 返回: (topic, (data, connection_info), t)
             # 我们只传输必要数据以减少带宽： topic, datatype, data, timestamp
             count = 0
             if gen:
                 for msg in gen:
                     topic, raw_tuple, t = msg
-                    datatype, data_bytes, md5sum, pos, pytype = raw_tuple
+                    data_bytes, connection_info = raw_tuple
+                    datatype = connection_info.datatype
                     
                     # 构建轻量级 payload
                     payload = (topic, datatype, data_bytes, t.to_sec())
@@ -222,5 +224,11 @@ class ROSfsWorker:
         
         try:
             self._zmqsocket_.close()
+        except:
+            pass
+        
+        # 销毁独立的 context
+        try:
+            self._zmqcontext_.term()
         except:
             pass

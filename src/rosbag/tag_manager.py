@@ -3,16 +3,29 @@ from __future__ import print_function
 import os
 import sys
 import time
+import importlib.util
 
 # 延迟导入 rosfs_timekv，避免循环导入
 _rosfs_timekv = None
 
 def _get_rosfs_timekv():
-    """延迟导入 rosfs_timekv 模块"""
+    """
+    延迟导入 rosfs_timekv 模块
+    
+    由于 catkin 开发模式的特殊性，rosbag 包可能指向源码目录或 devel 目录，
+    这里遍历 sys.path 查找 rosfs_timekv.so 确保能正确加载。
+    """
     global _rosfs_timekv
     if _rosfs_timekv is None:
-        from rosbag import rosfs_timekv
-        _rosfs_timekv = rosfs_timekv
+        # 遍历 sys.path 查找 rosfs_timekv.so
+        for path in sys.path:
+            so_path = os.path.join(path, "rosbag", "rosfs_timekv.so")
+            if os.path.isfile(so_path):
+                spec = importlib.util.spec_from_file_location("rosbag.rosfs_timekv", so_path)
+                _rosfs_timekv = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(_rosfs_timekv)
+                return _rosfs_timekv
+        raise ImportError("Cannot find rosfs_timekv.so - please build the package first")
     return _rosfs_timekv
 
 class Entry:

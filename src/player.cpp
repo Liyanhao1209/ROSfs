@@ -610,7 +610,7 @@ void Player::doPublish(MessageInstance const& m) {
     }
 
     pub_iter->second.publish(m);
-    std::cout << "\n[Log] Publishing: " << m.getTopic() << " | Time: " << m.getTime() << std::endl;
+    // std::cout << "\n[Log] Publishing: " << m.getTopic() << " | Time: " << m.getTime() << std::endl;
 }
 
 

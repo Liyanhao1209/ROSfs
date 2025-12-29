@@ -142,9 +142,22 @@ class ROSfsWorker:
             gen = None
 
             if mode == 'time':
-                start_time = rospy.Time.from_sec(pickle.loads(args[2]))
-                end_time = rospy.Time.from_sec(pickle.loads(args[3]))
-                gen = handler.read_messages(topics, start_time, end_time, raw=True)
+                # 客户端传来的是相对时间（相对于 bag 开始的秒数）
+                relative_start = pickle.loads(args[2])
+                relative_end = pickle.loads(args[3])
+                
+                # 获取 bag 文件的绝对起始时间
+                bag_start_time = handler.get_start_time()  # 返回 float (秒)
+                
+                # 转换为绝对时间
+                abs_start_time = rospy.Time.from_sec(bag_start_time + relative_start)
+                abs_end_time = rospy.Time.from_sec(bag_start_time + relative_end)
+                
+                logging.info(f"Reading messages: bag_start={bag_start_time:.3f}, "
+                           f"relative=[{relative_start}, {relative_end}], "
+                           f"absolute=[{abs_start_time.to_sec():.3f}, {abs_end_time.to_sec():.3f}]")
+                
+                gen = handler.read_messages(topics, abs_start_time, abs_end_time, raw=True)
             elif mode == 'id':
                 start_id = pickle.loads(args[2])
                 cnt = pickle.loads(args[3])

@@ -167,32 +167,218 @@ def read_by_id_example(ip, bag_path, start_id=0, count=10):
 
 def simple_example():
     """
-    最简单的使用示例 - 复制这段代码即可开始使用
+    读取远程 bag 中的图像消息并保存为 PNG 文件
     """
+    import io
+    import numpy as np
+    from PIL import Image
     from ROSfs import ROSfsClient
     
     # 配置
-    REMOTE_IP = "172.17.0.3"      # 远程节点 IP
-    BAG_PATH = "/data/test.bag"   # 远程 bag 文件路径
+    REMOTE_IP = "172.17.0.4"                            # 远程节点 IP
+    BAG_PATH = "/data/data/calibration_handheld.bag"    # 远程 bag 文件路径
+    IMAGE_TOPIC = "/alphasense/cam0/image_raw"          # 图像 topic
+    OUTPUT_DIR = "./output_images"                      # 输出目录
+    
+    # 创建输出目录
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # 创建客户端并连接
-    client = ROSfsClient(timeout_ms=10000)
-    client.connect2dhcp(REMOTE_IP)
-    port = client.allocate(REMOTE_IP)
-    client.mount(REMOTE_IP, port, BAG_PATH)
+    client = ROSfsClient(timeout_ms=30000) 
+    port = None
     
-    # 读取消息
-    for topic, datatype, data_bytes, timestamp in client.read_messages(
-        REMOTE_IP, port,
-        topics=None,        # None = 所有 topics
-        start_time=0.0,     # 相对起始时间（秒，相对于 bag 开始）
-        end_time=10.0       # 相对结束时间（秒，相对于 bag 开始）
-    ):
-        print(f"{topic}: {datatype} @ {timestamp}s")
+    try:
+        client.connect2dhcp(REMOTE_IP)
+        port = client.allocate(REMOTE_IP)
+        client.mount(REMOTE_IP, port, BAG_PATH)
+        print(f"[✓] 已连接到 {REMOTE_IP}, 挂载 {BAG_PATH}")
+        
+        # 读取图像消息
+        count = 0
+        for topic, datatype, data_bytes, timestamp in client.read_messages(
+            REMOTE_IP, port,
+            topics=[IMAGE_TOPIC],
+            start_time=0.0,
+            end_time=10.0       # 读取前 10 秒的图像
+        ):
+            count += 1
+            
+            # 解析 sensor_msgs/Image 消息
+            # raw 模式下 data_bytes 是序列化的消息数据
+            try:
+                img = deserialize_image(data_bytes, datatype)
+                if img is not None:
+                    # 保存为 PNG
+                    output_path = os.path.join(OUTPUT_DIR, f"frame_{count:06d}_{timestamp:.3f}.png")
+                    img.save(output_path)
+                    print(f"[{count}] 保存: {output_path} ({img.size[0]}x{img.size[1]})")
+                else:
+                    print(f"[{count}] 跳过: 无法解析图像 @ {timestamp:.3f}s")
+            except Exception as e:
+                print(f"[{count}] 错误: {e}")
+            
+            # 限制数量（可选）
+            if count >= 100:
+                print("已达到最大数量限制")
+                break
+        
+        print(f"\n完成! 共保存 {count} 张图像到 {OUTPUT_DIR}")
+        
+    except Exception as e:
+        print(f"错误: {e}")
+    finally:
+        if port is not None:
+            client.deallocate(REMOTE_IP, port)
+        client.close()
+
+
+def deserialize_image(data_bytes, datatype):
+    """
+    反序列化 ROS 图像消息为 PIL Image
     
-    # 清理
-    client.deallocate(REMOTE_IP, port)
-    client.close()
+    支持的格式:
+    - sensor_msgs/Image
+    - sensor_msgs/CompressedImage
+    """
+    import io
+    import struct
+    import numpy as np
+    from PIL import Image
+    
+    if 'CompressedImage' in datatype:
+        # CompressedImage: 直接是 JPEG/PNG 数据
+        # 格式: header + format(string) + data
+        # 简化处理：尝试找到图像数据
+        try:
+            # 跳过 header 和 format 字符串，尝试解码
+            # CompressedImage 的 data 字段通常在末尾
+            img = Image.open(io.BytesIO(data_bytes))
+            return img
+        except:
+            # 尝试查找 JPEG/PNG 魔数
+            jpeg_start = data_bytes.find(b'\xff\xd8\xff')
+            png_start = data_bytes.find(b'\x89PNG')
+            
+            if jpeg_start >= 0:
+                img = Image.open(io.BytesIO(data_bytes[jpeg_start:]))
+                return img
+            elif png_start >= 0:
+                img = Image.open(io.BytesIO(data_bytes[png_start:]))
+                return img
+        return None
+    
+    elif 'Image' in datatype:
+        # sensor_msgs/Image 格式:
+        # header (序列化的 std_msgs/Header)
+        # height (uint32)
+        # width (uint32)  
+        # encoding (string)
+        # is_bigendian (uint8)
+        # step (uint32)
+        # data (uint8[])
+        
+        try:
+            offset = 0
+            
+            # 跳过 header (seq + stamp + frame_id)
+            # seq: uint32
+            offset += 4
+            # stamp: uint32 + uint32
+            offset += 8
+            # frame_id: uint32(len) + string
+            frame_id_len = struct.unpack('<I', data_bytes[offset:offset+4])[0]
+            offset += 4 + frame_id_len
+            
+            # height, width
+            height = struct.unpack('<I', data_bytes[offset:offset+4])[0]
+            offset += 4
+            width = struct.unpack('<I', data_bytes[offset:offset+4])[0]
+            offset += 4
+            
+            # encoding: uint32(len) + string
+            encoding_len = struct.unpack('<I', data_bytes[offset:offset+4])[0]
+            offset += 4
+            encoding = data_bytes[offset:offset+encoding_len].decode('utf-8')
+            offset += encoding_len
+            
+            # is_bigendian
+            is_bigendian = struct.unpack('<B', data_bytes[offset:offset+1])[0]
+            offset += 1
+            
+            # step
+            step = struct.unpack('<I', data_bytes[offset:offset+4])[0]
+            offset += 4
+            
+            # data: uint32(len) + raw pixels
+            data_len = struct.unpack('<I', data_bytes[offset:offset+4])[0]
+            offset += 4
+            pixel_data = data_bytes[offset:offset+data_len]
+            
+            # 根据 encoding 转换为图像
+            img = convert_ros_image_to_pil(pixel_data, width, height, encoding)
+            return img
+            
+        except Exception as e:
+            print(f"解析 Image 失败: {e}")
+            return None
+    
+    return None
+
+
+def convert_ros_image_to_pil(pixel_data, width, height, encoding):
+    """
+    将 ROS 图像数据转换为 PIL Image
+    """
+    import numpy as np
+    from PIL import Image
+    
+    encoding = encoding.lower()
+    
+    if encoding in ['mono8', '8uc1']:
+        # 灰度图
+        arr = np.frombuffer(pixel_data, dtype=np.uint8).reshape((height, width))
+        return Image.fromarray(arr, mode='L')
+    
+    elif encoding in ['mono16', '16uc1']:
+        # 16位灰度图
+        arr = np.frombuffer(pixel_data, dtype=np.uint16).reshape((height, width))
+        # 归一化到 8 位
+        arr = (arr / 256).astype(np.uint8)
+        return Image.fromarray(arr, mode='L')
+    
+    elif encoding in ['rgb8', '8uc3']:
+        arr = np.frombuffer(pixel_data, dtype=np.uint8).reshape((height, width, 3))
+        return Image.fromarray(arr, mode='RGB')
+    
+    elif encoding == 'rgba8':
+        arr = np.frombuffer(pixel_data, dtype=np.uint8).reshape((height, width, 4))
+        return Image.fromarray(arr, mode='RGBA')
+    
+    elif encoding in ['bgr8']:
+        arr = np.frombuffer(pixel_data, dtype=np.uint8).reshape((height, width, 3))
+        # BGR -> RGB
+        arr = arr[:, :, ::-1]
+        return Image.fromarray(arr, mode='RGB')
+    
+    elif encoding == 'bgra8':
+        arr = np.frombuffer(pixel_data, dtype=np.uint8).reshape((height, width, 4))
+        # BGRA -> RGBA
+        arr = arr[:, :, [2, 1, 0, 3]]
+        return Image.fromarray(arr, mode='RGBA')
+    
+    elif encoding in ['bayer_rggb8', 'bayer_bggr8', 'bayer_gbrg8', 'bayer_grbg8']:
+        # Bayer 格式，简单处理为灰度
+        arr = np.frombuffer(pixel_data, dtype=np.uint8).reshape((height, width))
+        return Image.fromarray(arr, mode='L')
+    
+    else:
+        # 未知格式，尝试作为灰度图处理
+        print(f"未知编码格式: {encoding}, 尝试作为灰度图处理")
+        try:
+            arr = np.frombuffer(pixel_data, dtype=np.uint8).reshape((height, width))
+            return Image.fromarray(arr, mode='L')
+        except:
+            return None
 
 
 if __name__ == "__main__":

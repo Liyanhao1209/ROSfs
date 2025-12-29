@@ -3,7 +3,17 @@ from __future__ import print_function
 import os
 import sys
 import time
-from rosbag import rosfs_timekv
+
+# 延迟导入 rosfs_timekv，避免循环导入
+_rosfs_timekv = None
+
+def _get_rosfs_timekv():
+    """延迟导入 rosfs_timekv 模块"""
+    global _rosfs_timekv
+    if _rosfs_timekv is None:
+        from rosbag import rosfs_timekv
+        _rosfs_timekv = rosfs_timekv
+    return _rosfs_timekv
 
 class Entry:
     def __init__(self, conn, path, time_range=(0, 0)):
@@ -52,6 +62,7 @@ class TagManager:
 
     def time_query(self, tags, start_sec, end_sec):
         result = []
+        rosfs_timekv = _get_rosfs_timekv()
         tag_ranges = rosfs_timekv.query(
             self._container, tags, int(start_sec),  int(end_sec)
         )
@@ -62,9 +73,11 @@ class TagManager:
         return result
     
     def timekv_insert(self,topic,sec,nsec,msg_type,md5sum,msg_def,msg,connection_header, raw=False):
+        rosfs_timekv = _get_rosfs_timekv()
         rosfs_timekv.insert(self._container,topic,sec,nsec,msg_type,md5sum,msg_def,msg,connection_header, raw)
 
     def batch_timekv_insert(self,topics,secs,nsecs,msg_types,md5sums,msg_defs,msgs,connection_headers, raw=False):
+        rosfs_timekv = _get_rosfs_timekv()
         rosfs_timekv.batch_insert(self._container,topics,secs,nsecs,msg_types,md5sums,msg_defs,msgs,connection_headers,raw)
     
     def _extract_attr(self, path):

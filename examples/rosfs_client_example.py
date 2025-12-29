@@ -2,15 +2,10 @@
 """
 ROSfs Client 远程访问示例脚本
 
-此脚本演示如何使用 ROSfs Client 连接到远程节点（172.17.0.3 和 172.17.0.4），
-读取远程 bag 文件中的消息。
-
 前提条件：
-1. 远程节点上需要运行 ROSfs 服务：
-   在 172.17.0.3 上运行: rosfs --serve
-   在 172.17.0.4 上运行: rosfs --serve
+1. 远程节点上需要运行 ROSfs 服务：rosfs worker
    
-2. 远程节点上有可访问的 bag 文件
+2. 远程节点上有可访问的 rosfs container
 
 使用方法：
    python rosfs_client_example.py --ip 172.17.0.3 --bag /data/test.bag
@@ -395,17 +390,19 @@ if __name__ == "__main__":
   # 指定 topic 和时间范围
   python %(prog)s --ip 172.17.0.3 --bag /data/test.bag --topics /odom /imu --start 0 --end 30
   
-  # 连接多个节点
-  python %(prog)s --ip 172.17.0.3 --ip2 172.17.0.4 --bag /data/test.bag --multi
+  # 连接多个节点（每个节点使用不同的 bag）
+  python %(prog)s --multi --ip 172.17.0.3 172.17.0.4 172.17.0.5 --bag /data/a.bag /data/b.bag /data/c.bag
+  
+  # 连接多个节点（所有节点使用同一个 bag 路径）
+  python %(prog)s --multi --ip 172.17.0.3 172.17.0.4 --bag /data/test.bag
   
   # 按 ID 读取
   python %(prog)s --ip 172.17.0.3 --bag /data/test.bag --by-id --start-id 0 --count 20
         """
     )
     
-    parser.add_argument("--ip", default="172.17.0.3", help="远程节点 IP")
-    parser.add_argument("--ip2", default="172.17.0.4", help="第二个节点 IP（用于多节点模式）")
-    parser.add_argument("--bag", default="/data/test.bag", help="远程 bag 文件路径")
+    parser.add_argument("--ip", nargs="+", default=["172.17.0.3"], help="远程节点 IP（可指定多个）")
+    parser.add_argument("--bag", nargs="+", default=["/data/data/calibration.bag"], help="远程 bag 文件路径（可指定多个，与 IP 一一对应）")
     parser.add_argument("--topics", nargs="*", default=None, help="要读取的 topics")
     parser.add_argument("--start", type=float, default=0.0, help="起始时间（秒）")
     parser.add_argument("--end", type=float, default=10.0, help="结束时间（秒）")
@@ -424,12 +421,27 @@ if __name__ == "__main__":
     if args.simple:
         simple_example()
     elif args.multi:
-        nodes = [
-            {"ip": args.ip, "bag": args.bag},
-            {"ip": args.ip2, "bag": args.bag},
-        ]
+        # 构建节点配置列表
+        ips = args.ip
+        bags = args.bag
+        
+        # 如果 bag 只有一个，则所有 IP 使用同一个 bag
+        if len(bags) == 1 and len(ips) > 1:
+            bags = bags * len(ips)
+        
+        # 检查 IP 和 bag 数量是否匹配
+        if len(ips) != len(bags):
+            print(f"[✗] 错误: IP 数量 ({len(ips)}) 与 bag 数量 ({len(bags)}) 不匹配")
+            print("    提示: 可以指定多个 --ip 和对应的 --bag，或者只指定一个 --bag 供所有节点使用")
+            sys.exit(1)
+        
+        nodes = [{"ip": ip, "bag": bag} for ip, bag in zip(ips, bags)]
+        print(f"多节点模式: 连接 {len(nodes)} 个节点")
+        for n in nodes:
+            print(f"  - {n['ip']} -> {n['bag']}")
+        print()
         multi_node_read(nodes)
     elif args.by_id:
-        read_by_id_example(args.ip, args.bag, args.start_id, args.count)
+        read_by_id_example(args.ip[0], args.bag[0], args.start_id, args.count)
     else:
-        basic_remote_read(args.ip, args.bag, args.topics, args.start, args.end)
+        basic_remote_read(args.ip[0], args.bag[0], args.topics, args.start, args.end)

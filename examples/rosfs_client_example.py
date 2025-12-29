@@ -176,7 +176,7 @@ def simple_example():
     
     # 配置
     REMOTE_IP = "172.17.0.4"                            # 远程节点 IP
-    BAG_PATH = "/data/data/calibration_handheld.bag"    # 远程 bag 文件路径
+    BAG_PATH = "/data/data/calibration.bag"    # 远程 bag 文件路径
     IMAGE_TOPIC = "/alphasense/cam0/image_raw"          # 图像 topic
     OUTPUT_DIR = "./output_images"                      # 输出目录
     
@@ -202,7 +202,7 @@ def simple_example():
             end_time=10.0       # 读取前 10 秒的图像
         ):
             count += 1
-            
+            print(topic,datatype,len(data_bytes),timestamp)
             # 解析 sensor_msgs/Image 消息
             # raw 模式下 data_bytes 是序列化的消息数据
             try:

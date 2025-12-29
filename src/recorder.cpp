@@ -355,7 +355,7 @@ void Recorder::doQueue(const ros::MessageEvent<topic_tools::ShapeShifter const>&
     
     // if (options_.verbose)
     //     cout << "Received message on topic " << subscriber->getTopic() << endl;
-    std::cout << "Received message on topic " << subscriber->getTopic() << std::endl;
+    // std::cout << "Received message on topic " << subscriber->getTopic() << std::endl;
 
     OutgoingMessage out(topic, msg_event.getMessage(), msg_event.getConnectionHeaderPtr(), rectime, msg_idx.load());
     msg_idx.fetch_add(1,std::memory_order_relaxed);

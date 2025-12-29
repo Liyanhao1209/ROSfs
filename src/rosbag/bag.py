@@ -3021,10 +3021,11 @@ class _BagReader200(_BagReader):
                                 bag_message = self.read_message_data_record(f, raw, 0, return_connection_header)
                                 yield bag_message
                             except Exception as e:
-                                raise ROSBagException(f"error when reading time ranged data:{e}")
+                                # raise ROSBagException(f"error when reading time ranged data:{e}")
+                                pass
                     except Exception as e:
-                        raise ROSBagException(f"error when reading time ranged data:{e}")
-                        # pass
+                        # raise ROSBagException(f"error when reading time ranged data:{e}")
+                        pass
     
     # ROSfs only
     def read_message_data_record(self, f, raw, id, return_connection_header=False):

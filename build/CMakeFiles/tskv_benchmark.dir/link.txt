@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -march=native -mtune=native CMakeFiles/tskv_benchmark.dir/benchmark/benchmark.cpp.o -o tskv_benchmark 

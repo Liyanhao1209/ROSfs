@@ -1,0 +1,10 @@
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/tskv_benchmark.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/tskv_test.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/tskv_example.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/test.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/edit_cache.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/rebuild_cache.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/list_install_components.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/install.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/install/local.dir
+/home/v_liyanhao/workspace/tskv/build/CMakeFiles/install/strip.dir

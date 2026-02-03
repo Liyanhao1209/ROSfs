@@ -4,12 +4,24 @@ message(STATUS "Fetching GoogleTest...")
 FetchContent_Declare(
   googletest
   URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-add_executable(test_rosbag test_rosbag.cpp)
-target_link_libraries(test_rosbag PRIVATE rosbag_core GTest::gtest_main)
-
 include(GoogleTest)
-gtest_discover_tests(test_rosbag)
+
+# =========================================================
+# 合并所有测试到一个可执行文件
+# =========================================================
+add_executable(rosbag_all_tests 
+    test_rosbag.cpp
+    test_concurrency.cpp
+)
+
+target_link_libraries(rosbag_all_tests PRIVATE 
+    rosbag_core 
+    GTest::gtest_main
+)
+
+gtest_discover_tests(rosbag_all_tests)
